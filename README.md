@@ -8,9 +8,11 @@
 
 
 ## Bibliotecas externas
+- Adafruit_MPU6050 (https://github.com/adafruit/Adafruit_MPU6050)
+- Adafruit_BMP280_Library (https://github.com/adafruit/Adafruit_BMP280_Library/tree/master)
+- BluetoothSerial do Espressif Systems (https://github.com/espressif/arduino-esp32/tree/ee021855a156847dfcf75a9aeb8d585213f09e42/libraries/BluetoothSerial)
 
 ## Mudanças necessárias
-
 - comunicação de bluetooth para checar as peças
 - receber as informações dos 2 BMP e tirar as médias e no caso de só receber o sinal de 1, usa o valor do único que recebeu
 
@@ -22,17 +24,12 @@ Não precisa mostrar a saída na telinha nem nada. Ele vai dar o resultado por m
 Posteriormente vou mandar pra vocês os módulos de cartão de memória que temos. porém precisamos fazer isso até dia 14, pois precisamos enviar um documento para a organização mostrando tudo montado.
 
 
-- BluetoothSerial
-- Subrotina buzzer 1s ligado e 1s desligado
-
-
-- comunicação de bluetooth para checar as peças
+- (OK) comunicação de bluetooth para checar as peças
 - (OK) receber as informações dos 2 BMP e tirar as médias e no caso de só receber o sinal de 1, usa o valor do único que recebeu
 - (OK) fazer o mesmo do BMP, mas para MPU 6050
 - gerar a saída conforme falei, contendo todas aquelas informações
 - (OK) Escrever em um cartão de memória
-
-- Tempo
+- (OK) Tempo
 
 
 ## Histórico de modificações do código
