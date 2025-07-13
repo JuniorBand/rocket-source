@@ -53,7 +53,7 @@ void verificarAltitude(float altitude); // Verifica se a altitude atingiu o apog
 void escanearI2C(void); // Escaneia o barramento I2C para detectar dispositivos.
 void finalizarMissao(const __FlashStringHelper *razao); // Finaliza a missão com uma razão específica.
 void verificarSensores(uint8_t ADDRESS_1, uint8_t ADDRESS_2, uint8_t ADDRESS_3, uint8_t  ADDRESS_4); // Verifica se os sensores estão funcionando corretamente nos seus endereços.
-void validarSensores(float altitude_atual_1, float altitude_atual_2); // Valida as leituras dos sensores.
+bool validarSensores(float altitude_atual_1, float altitude_atual_2); // Valida as leituras dos sensores.
 void printDados(float altitude, sensors_event_t a1, sensors_event_t a2, sensors_event_t g1, sensors_event_t g2); // Imprime os dados no Serial e no cartão SD. 
 void acionarBuzzer(int timeOn, int timeOff);  // Buzzer contínuo de timeOn em timeOff ms.
 float calcularMedia(float buffer_leituras[]); // Calcula a média das leituras de altitude.
@@ -107,28 +107,28 @@ void loop() {
   //Lendo os valores de altura, aceleração e angulação
   float altitude_atual_1 = bmp1.readAltitude(1013.25);
   float altitude_atual_2 = bmp1.readAltitude(1013.25);
-  
+
   sensors_event_t a1, g1, t1; // t1 será ignorado
   sensors_event_t a2, g2, t2; // t2 será ignorado
   mpu1.getEvent(&a1, &g1, &t1);
   mpu2.getEvent(&a2, &g2, &t2);
 
   /* VERIFICAÇÕES DE VALIDADE DA LEITURA */
-  //Só para as altitudes, pois ela é primordial para o acionamento do para-quedas
-  validarSensores(altitude_atual_1, altitude_atual_2);
+  // Validação só para a altitude, pois ela é primordial para o acionamento do para-quedas.
+  // Retorna se há falha de leitura dos sensores, se ambos os sensores estão medindo (0.0 e 0.0) ou (0.0 e NaN).
+  // Se os sensores estão medindo (NaN e NaN), finaliza a missão automaticamente.
+  bool sensor_valido = validarSensores(altitude_atual_1, altitude_atual_2);
+
+  if (!sensor_valido) {
+    return; // Se os sensores não estão medindo corretamente: (0.0 e 0.0) ou (0.0 e NaN); não continua a execução do loop.
+  }
+
+  // Se os sensores estão medindo corretamente, atualiza o buffer de leituras e procede com a lógica de voo.
 
   if (!calibracao_concluida) {
     // --- Lógica de Calibração ---
-    indice_buffer ++;
-    
     if (indice_buffer == JANELA_LEITURAS) {
-      float soma_leituras = 0;
-
-      for (int i = 0; i < JANELA_LEITURAS; i++) {
-        soma_leituras += buffer_leituras[i];
-      }
-
-      leitura_inicial = soma_leituras / (JANELA_LEITURAS << 1);
+      leitura_inicial = calcularMedia(buffer_leituras); // Calcula a média das leituras do buffer.
       calibracao_concluida = true;
 
       Serial.println(F("================================================="));
@@ -143,7 +143,6 @@ void loop() {
         dataFile.println("Apogeu: " + String(apogeu)); // Registra o apogeu no arquivo.
         dataFile.close(); // Fecha o arquivo.
       }
-      
 
       // if(SerialBT.available()){
       //     serialBT.write()
@@ -221,26 +220,34 @@ void finalizarMissao(const __FlashStringHelper *razao) {
   }
 }
 
-float calcularMedia(float buffer_leituras[]){
-  indice_buffer = (indice_buffer + 1) % JANELA_LEITURAS;
+//OK
+float calcularMedia(float buffer_leituras[]) {
   
-  float soma_buffer = 0;
+  float soma_buffer = 0.0f;
 
   for (int i = 0; i < JANELA_LEITURAS; i++) {
     soma_buffer += buffer_leituras[i];
   }
 
-  float nova_media = soma_buffer / JANELA_LEITURAS;
+  float nova_media = soma_buffer /  JANELA_LEITURAS; // Usa número real de leituras 
   float altitude_relativa = nova_media - leitura_inicial;
   return altitude_relativa; // Retorna a altitude relativa ajustada.
 }
 
+//OK
+void atualizarBuffer(float leitura) {
+  if (leitura != 0.0f && !isnan(leitura)) { // Prevenir leituras inválidas.
+    buffer_leituras[indice_buffer] = leitura;
+    indice_buffer = (indice_buffer + 1) % JANELA_LEITURAS;
+  }
+}
 
 //(OK)
-void validarSensores(float altitude_atual_1, float altitude_atual_2){
+bool validarSensores(float altitude_atual_1, float altitude_atual_2){
   // Se os sensores retornarem NaN, finaliza a missão.
   if (isnan(altitude_atual_1) && isnan(altitude_atual_2)) {
     finalizarMissao(F("ERRO DE LEITURA DO SENSOR BMP 1 e 2 (NaN)"));
+    return false;
   }
   // Se os sensores retornarem 0.0, incrementa o contador de leituras zero.
   // Se o contador de leituras zero for maior ou igual a 3, finaliza a missão.
@@ -250,43 +257,46 @@ void validarSensores(float altitude_atual_1, float altitude_atual_2){
       (altitude_atual_1 == 0.0f && isnan(altitude_atual_2))) {
     Serial.println(F("ALERTA: Leituras de altitude zeradas detectadas!"));
     contador_leituras_zero++;
+    return false; // Indica que os dois sensores estão medindo (0.0 e 0.0) ou (0.0 e NaN).
   } else {
     contador_leituras_zero = 0;
   }
   if (contador_leituras_zero >= 3) {
     finalizarMissao(F("TRES LEITURAS ZERADAS CONSECUTIVAS"));
+    return false
   }
 
   if ((isnan(altitude_atual_2) || (altitude_atual_2 == 0.0f)) &&
       (!isnan(altitude_atual_1) || !(altitude_atual_1 == 0.0f))){
     Serial.println(F("ALERTA: O sensor 2 está falhando, mas o 1 está em funcionamento!"));
-    buffer_leituras[indice_buffer] = altitude_atual_1;
-    return; // Continua o loop sem alterar a janela de leituras para o cálculo da média.
+    atualizarBuffer(altitude_atual_1);
+    return true;
   }
 
   if ((isnan(altitude_atual_1) || (altitude_atual_1 == 0.0f)) &&
       (!isnan(altitude_atual_2) || !(altitude_atual_2 == 0.0f))){
     Serial.println(F("ALERTA: O sensor 1 está falhando, mas o 2 está em funcionamento!"));
-    buffer_leituras[indice_buffer] = altitude_atual_2;   
-    return; // Continua o loop sem alterar a janela de leituras para o cálculo da média.
+    atualizarBuffer(altitude_atual_2);
+    return true;
   }
 
   // Se ambos os sensores estão funcionando, a janela de leituras é duplicada para o cálculo da média.
-  //JANELA_LEITURAS *= 2;
-  buffer_leituras[indice_buffer] = altitude_atual_1 + altitude_atual_2;
-
+  atualizarBuffer((altitude_atual_1 + altitude_atual_2)/2);
+  return true; // Indica que os sensores estão medindo corretamente.
 }
 
 //(Checar lógica de verificação de altitude)
 void verificarAltitude(float altitude) {
   // Condição ajustada para o foguete de alto desempenho.
-  if (!mosfetsAcionados && (apogeu >= META_APOGEU && altitude <= apogeu - 6*QUEDA) 
-    || (apogeu < META_APOGEU && altitude <= apogeu - QUEDA)) {
-    // Aciona os mosfets se superar meta de apogeu e estiver descendo ou
-    // se não atingir a meta e estiver descendo com uma margem de erro de QUEDA.
-    mosfetsAcionados = true;
+  if (!mosfetsAcionados){
+    if (apogeu >= META_APOGEU && altitude <= apogeu - 6*QUEDA) 
+      || (apogeu < META_APOGEU && altitude <= apogeu - QUEDA)) {
+      // Aciona os mosfets se superar meta de apogeu e estiver descendo ou
+      // se não atingir a meta e estiver descendo com uma margem de erro de QUEDA.
+      mosfetsAcionados = true;
 
-    finalizarMissao(F("ACIONAMENTO NORMAL POS-APOGEU"));
+      finalizarMissao(F("ACIONAMENTO NORMAL POS-APOGEU"));
+    }
   }
 }
 
