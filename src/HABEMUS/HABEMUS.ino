@@ -1,7 +1,7 @@
 #include <Wire.h>
 #include <Adafruit_BMP280.h>
 #include <Adafruit_MPU6050.h>
-//#include <BluetoothSerial.h>
+#include <BluetoothSerial.h>
 #include <SD.h> // Inclui a biblioteca para leitura/escrita em cartão SD.
 
 
@@ -26,8 +26,16 @@ Adafruit_BMP280 bmp1(BMP280_1_ADDRESS);
 Adafruit_BMP280 bmp2(BMP280_2_ADDRESS);
 Adafruit_MPU6050 mpu1;
 Adafruit_MPU6050 mpu2;
-//BluetoothSerial serialBT;
+BluetoothSerial serialBT;
 File dataFile; // Cria um objeto para o arquivo de dados no cartão SD.
+
+enum SensorStatus {
+  SENSOR_OK,
+  SENSOR_FALHA_AMBOS_NAN,
+  SENSOR_FALHA_ZERADO_AMBOS_OU_UM_NAN,
+  SENSOR_FALHA_CONSECUTIVA_ZERADA,
+  SENSOR_FALHA_UM_SENSOR
+};
 
 float apogeu = 0.0f;
 bool mosfetsAcionados = false;
@@ -53,12 +61,14 @@ void verificarAltitude(float altitude); // Verifica se a altitude atingiu o apog
 void escanearI2C(void); // Escaneia o barramento I2C para detectar dispositivos.
 void finalizarMissao(const __FlashStringHelper *razao); // Finaliza a missão com uma razão específica.
 void verificarSensores(uint8_t ADDRESS_1, uint8_t ADDRESS_2, uint8_t ADDRESS_3, uint8_t  ADDRESS_4); // Verifica se os sensores estão funcionando corretamente nos seus endereços.
-bool validarSensores(float altitude_atual_1, float altitude_atual_2); // Valida as leituras dos sensores.
+SensorStatus validarSensores(float altitude_atual_1, float altitude_atual_2); // Valida as leituras dos sensores.
 void printDados(float altitude, sensors_event_t a1, sensors_event_t a2, sensors_event_t g1, sensors_event_t g2); // Imprime os dados no Serial e no cartão SD. 
 void acionarBuzzer(int timeOn, int timeOff);  // Buzzer contínuo de timeOn em timeOff ms.
 float calcularMedia(float buffer_leituras[]); // Calcula a média das leituras de altitude.
+void enviarTabelaBluetooth(float altitude, float acel_x, float acel_y, float acel_z, 
+                           float gyro_x, float gyro_y, float gyro_z, bool paraquedasAcionado); // Envia os dados para o Bluetooth.
+void atualizarBuffer(float leitura); // Atualiza o buffer de leituras com a nova leitura de altitude.
 
-//(OK)
 void setup() {
   Serial.begin(115200);
   pinMode(PINO_BUZZER, OUTPUT);
@@ -66,11 +76,13 @@ void setup() {
   digitalWrite(PINO_MOSFET_1, LOW);
   pinMode(PINO_MOSFET_2, OUTPUT);
   digitalWrite(PINO_MOSFET_2, LOW);
-  //serialBT.begin("ESP32-BT")
+  serialBT.begin("ESP32-BT");
+  Serial.println("Bluetooth inicializado. Conecte-se ao dispositivo via Serial Bluetooth Terminal.");
 
   // Inicialização do SD
   if (!SD.begin(PINO_CHIP)) {
     Serial.println("Falha na inicialização do cartão SD!");
+    finalizarMissao(F("ERRO CRITICO NA INICIALIZACAO DO CARTAO SD")); // Adicionado: Finaliza a missão se o SD falhar
   } else {
     Serial.println("Cartão SD inicializado com sucesso!");
   }
@@ -117,10 +129,20 @@ void loop() {
   // Validação só para a altitude, pois ela é primordial para o acionamento do para-quedas.
   // Retorna se há falha de leitura dos sensores, se ambos os sensores estão medindo (0.0 e 0.0) ou (0.0 e NaN).
   // Se os sensores estão medindo (NaN e NaN), finaliza a missão automaticamente.
-  bool sensor_valido = validarSensores(altitude_atual_1, altitude_atual_2);
+  SensorStatus sensor_valido = validarSensores(altitude_atual_1, altitude_atual_2);
 
-  if (!sensor_valido) {
-    return; // Se os sensores não estão medindo corretamente: (0.0 e 0.0) ou (0.0 e NaN); não continua a execução do loop.
+  if (sensor_valido != SENSOR_OK) {
+    switch (sensor_valido) {
+      case SENSOR_FALHA_AMBOS_NAN:
+        finalizarMissao(F("ERRO DE LEITURA DO SENSOR BMP 1 e 2 (NaN)"));
+        break;
+      case SENSOR_FALHA_CONSECUTIVA_ZERADA:
+        finalizarMissao(F("TRES LEITURAS ZERADAS CONSECUTIVAS"));
+        break;
+      default:
+        break;
+    }
+    return; // Se os sensores não estão medindo corretamente, não continua a execução do loop.
   }
 
   // Se os sensores estão medindo corretamente, atualiza o buffer de leituras e procede com a lógica de voo.
@@ -135,13 +157,12 @@ void loop() {
       Serial.print(F("Calibracao concluida. Altitude de referencia (zero): "));
       Serial.print(leitura_inicial);
       Serial.println(F(" m."));
-      //Serial.println(F("AGUARDANDO LANCAMENTO..."));
+      Serial.println(F("AGUARDANDO LANCAMENTO..."));
       Serial.println(F("================================================="));
       
-      dataFile = SD.open("dados.txt", FILE_WRITE); // Abre o arquivo para escrita.
-      if (dataFile) { // Se o arquivo foi aberto com sucesso:
-        dataFile.println("Apogeu: " + String(apogeu)); // Registra o apogeu no arquivo.
-        dataFile.close(); // Fecha o arquivo.
+      dataFile = SD.open("dados.txt", FILE_WRITE);
+      if (dataFile) {
+        dataFile.println("Registro de Dados de Voo - HABEMUS");
       }
 
       // if(SerialBT.available()){
@@ -154,10 +175,7 @@ void loop() {
     return;
   }
   
-  /* --- Fase de Operação Normal (Após a Calibração Inicial) --- */
-
-  //Rever essa estratégia
-  
+  /* --- Fase de Operação Normal (Após a Calibração Inicial) --- */  
   float altitude_relativa = calcularMedia(buffer_leituras);
   printDados(altitude_relativa, a1, a2, g1, g2);
 
@@ -200,7 +218,6 @@ void loop() {
   delay(100);
 }
 
-//(OK)
 void finalizarMissao(const __FlashStringHelper *razao) {
   Serial.println(F("\n================================================="));
   Serial.print(F("FINALIZANDO MISSAO. MOTIVO: "));
@@ -215,12 +232,17 @@ void finalizarMissao(const __FlashStringHelper *razao) {
 
   paraquedasAcionado = true;
 
+  if (dataFile) {
+    dataFile.println("Apogeu Final: " + String(apogeu) + " m");
+    dataFile.close();
+    Serial.println(F("Arquivo SD fechado."));
+  }
+
   while (true) {
     acionarBuzzer(300, 300);
   }
 }
 
-//OK
 float calcularMedia(float buffer_leituras[]) {
   
   float soma_buffer = 0.0f;
@@ -234,7 +256,6 @@ float calcularMedia(float buffer_leituras[]) {
   return altitude_relativa; // Retorna a altitude relativa ajustada.
 }
 
-//OK
 void atualizarBuffer(float leitura) {
   if (leitura != 0.0f && !isnan(leitura)) { // Prevenir leituras inválidas.
     buffer_leituras[indice_buffer] = leitura;
@@ -242,54 +263,52 @@ void atualizarBuffer(float leitura) {
   }
 }
 
-//(OK)
-bool validarSensores(float altitude_atual_1, float altitude_atual_2){
-  // Se os sensores retornarem NaN, finaliza a missão.
+SensorStatus validarSensores(float altitude_atual_1, float altitude_atual_2){
+  // Se os sensores retornarem NaN, retorna o status de falha.
   if (isnan(altitude_atual_1) && isnan(altitude_atual_2)) {
-    finalizarMissao(F("ERRO DE LEITURA DO SENSOR BMP 1 e 2 (NaN)"));
-    return false;
+    Serial.println(F("ERRO: Leituras de altitude do BMP 1 e 2 invalidas (NaN)!"));
+    return SENSOR_FALHA_AMBOS_NAN;
   }
-  // Se os sensores retornarem 0.0, incrementa o contador de leituras zero.
-  // Se o contador de leituras zero for maior ou igual a 3, finaliza a missão.
-  // Isso evita que o foguete continue voando com leituras inválidas.
-  if ((altitude_atual_1 == 0.0f) && (altitude_atual_2 == 0.0f) ||
+
+  // Se os sensores retornarem 0.0 ou 0.0 e NaN, incrementa o contador de leituras zero.
+  // Se o contador de leituras zero for maior ou igual a 3, retorna o status de falha consecutivo.
+  if ((altitude_atual_1 == 0.0f && altitude_atual_2 == 0.0f) ||
       (isnan(altitude_atual_1) && altitude_atual_2 == 0.0f) ||
       (altitude_atual_1 == 0.0f && isnan(altitude_atual_2))) {
     Serial.println(F("ALERTA: Leituras de altitude zeradas detectadas!"));
     contador_leituras_zero++;
-    return false; // Indica que os dois sensores estão medindo (0.0 e 0.0) ou (0.0 e NaN).
+    if (contador_leituras_zero >= 3) {
+      return SENSOR_FALHA_CONSECUTIVA_ZERADA;
+    }
+    return SENSOR_FALHA_ZERADO_AMBOS_OU_UM_NAN;
   } else {
     contador_leituras_zero = 0;
   }
-  if (contador_leituras_zero >= 3) {
-    finalizarMissao(F("TRES LEITURAS ZERADAS CONSECUTIVAS"));
-    return false
-  }
 
+  // Se um dos sensores está falhando, usa a leitura do outro sensor.
   if ((isnan(altitude_atual_2) || (altitude_atual_2 == 0.0f)) &&
-      (!isnan(altitude_atual_1) || !(altitude_atual_1 == 0.0f))){
-    Serial.println(F("ALERTA: O sensor 2 está falhando, mas o 1 está em funcionamento!"));
+      (!isnan(altitude_atual_1) && !(altitude_atual_1 == 0.0f))){
+    Serial.println(F("ALERTA: O sensor 2 esta falhando, usando dados do sensor 1!"));
     atualizarBuffer(altitude_atual_1);
-    return true;
+    return SENSOR_OK;
   }
 
   if ((isnan(altitude_atual_1) || (altitude_atual_1 == 0.0f)) &&
-      (!isnan(altitude_atual_2) || !(altitude_atual_2 == 0.0f))){
-    Serial.println(F("ALERTA: O sensor 1 está falhando, mas o 2 está em funcionamento!"));
+      (!isnan(altitude_atual_2) && !(altitude_atual_2 == 0.0f))){
+    Serial.println(F("ALERTA: O sensor 1 esta falhando, usando dados do sensor 2!"));
     atualizarBuffer(altitude_atual_2);
-    return true;
+    return SENSOR_OK;
   }
 
-  // Se ambos os sensores estão funcionando, a janela de leituras é duplicada para o cálculo da média.
+  // Se ambos os sensores estão funcionando, atualiza o buffer com a média.
   atualizarBuffer((altitude_atual_1 + altitude_atual_2)/2);
-  return true; // Indica que os sensores estão medindo corretamente.
+  return SENSOR_OK; // Indica que os sensores estão medindo corretamente.
 }
 
-//(Checar lógica de verificação de altitude)
 void verificarAltitude(float altitude) {
   // Condição ajustada para o foguete de alto desempenho.
   if (!mosfetsAcionados){
-    if (apogeu >= META_APOGEU && altitude <= apogeu - 6*QUEDA) 
+    if ((apogeu >= META_APOGEU && altitude <= apogeu - 6*QUEDA) 
       || (apogeu < META_APOGEU && altitude <= apogeu - QUEDA)) {
       // Aciona os mosfets se superar meta de apogeu e estiver descendo ou
       // se não atingir a meta e estiver descendo com uma margem de erro de QUEDA.
@@ -300,7 +319,6 @@ void verificarAltitude(float altitude) {
   }
 }
 
-//(OK)
 void printDados(float altitude_relativa, sensors_event_t a1, sensors_event_t a2, sensors_event_t g1, sensors_event_t g2){
   Serial.print(F("Altitude = "));
   Serial.print(altitude_relativa);
@@ -325,27 +343,52 @@ void printDados(float altitude_relativa, sensors_event_t a1, sensors_event_t a2,
   Serial.print(F("; Z: ")); Serial.print(media_gyro_z); Serial.println(F(" rad/s."));
 
   //Print no cartão SD
-  if (SD.exists("dados.txt")) { // Se o arquivo "dados.txt" existir no cartão SD:
-    dataFile = SD.open("dados.txt", FILE_WRITE); // Abre o arquivo para escrita.
-    if (dataFile) { // Se o arquivo foi aberto com sucesso:
-      dataFile.print("Altitude: " + String(altitude_relativa) + ", "); // Registra F(a altitude no ar)quivo.
+  if (dataFile) { // Se o arquivo foi aberto com sucesso:
+    dataFile.print("Altitude: " + String(altitude_relativa) + ", "); // Registra F(a altitude no ar)quivo.
     
-      //Print das acelerações na memória Flash 
-      dataFile.print("Acceleration X: "+ String(media_ac_x) + " m/s^2");
-      dataFile.print("; Y: " + String(media_ac_y) + " m/s^2");
-      dataFile.print("; Z: " + String(media_ac_z) + " m/s^2");
+    //Print das acelerações na memória Flash 
+    dataFile.print("Acceleration X: "+ String(media_ac_x) + " m/s^2");
+    dataFile.print("; Y: " + String(media_ac_y) + " m/s^2");
+    dataFile.print("; Z: " + String(media_ac_z) + " m/s^2");
 
-      //Print das angulações na memória Flash 
-      dataFile.print("Rotation X: " + String(media_gyro_x) + " rad/s");
-      dataFile.print("; Y: " + String(media_gyro_y) + " rad/s");
-      dataFile.print("; Z: " + String(media_gyro_z) + " rad/s");
-
-      dataFile.close(); // Fecha o arquivo.
-    }
+    //Print das angulações na memória Flash 
+    dataFile.print("Rotation X: " + String(media_gyro_x) + " rad/s");
+    dataFile.print("; Y: " + String(media_gyro_y) + " rad/s");
+    dataFile.print("; Z: " + String(media_gyro_z) + " rad/s");
+    dataFile.println(); // Nova linha para a próxima entrada de dados.
   }
+
+  // Envia os dados via Bluetooth
+  enviarTabelaBluetooth(altitude_relativa, media_ac_x, media_ac_y, media_ac_z, 
+                        media_gyro_x, media_gyro_y, media_gyro_z, paraquedasAcionado);
+
 }
 
-//(OK)
+void enviarTabelaBluetooth(float altitude, float acel_x, float acel_y, float acel_z, 
+                           float gyro_x, float gyro_y, float gyro_z, bool paraquedasAcionado) {
+  // Move o cursor para o início da tela e limpa a tela
+  serialBT.print("\033[H"); // Move o cursor para o início da tela
+  serialBT.print("\033[J"); // Limpa a tela
+
+  // Calcula o tempo decorrido em segundos
+  uint16_t tempoDecorrido = millis() / 1000; // Converte para segundos
+
+  // Envia os nomes das variáveis (cabeçalho da tabela)
+  serialBT.println(F("Tempo | Altitude | Aceleração (X, Y, Z) | Giroscópio (X, Y, Z) | Paraquedas"));
+  serialBT.println(F("------|----------|----------------------|----------------------|-----------"));
+
+  // Envia os valores atualizados
+  serialBT.print(tempoDecorrido); serialBT.print(F(" s | "));
+  serialBT.print(altitude, 2); serialBT.print(F(" m | "));
+  serialBT.print(acel_x, 2); serialBT.print(F(", "));
+  serialBT.print(acel_y, 2); serialBT.print(F(", "));
+  serialBT.print(acel_z, 2); serialBT.print(F(" m/s^2 | "));
+  serialBT.print(gyro_x, 2); serialBT.print(F(", "));
+  serialBT.print(gyro_y, 2); serialBT.print(F(", "));
+  serialBT.print(gyro_z, 2); serialBT.print(F(" rad/s | "));
+  serialBT.println(paraquedasAcionado ? F("SIM") : F("NAO"));
+}
+
 void verificarSensores(uint8_t ADDRESS_1, uint8_t ADDRESS_2, uint8_t ADDRESS_3, uint8_t  ADDRESS_4){
   //Tentando inicializar os BMPs
   Serial.println(F("Tentando inicializar o primeiro BMP280 no endereco 0x76..."));
@@ -391,7 +434,6 @@ void verificarSensores(uint8_t ADDRESS_1, uint8_t ADDRESS_2, uint8_t ADDRESS_3, 
   }
 }
 
-//(OK)
 void acionarBuzzer(int timeOn, int timeOff) { // *[ALTERAÇÃO]* Buzzer contínuo de timeOn em timeOff ms.
   digitalWrite(PINO_BUZZER, HIGH); // Aciona o buzzer.
   delay(timeOn);
@@ -399,7 +441,6 @@ void acionarBuzzer(int timeOn, int timeOff) { // *[ALTERAÇÃO]* Buzzer contínu
   delay(timeOff); 
 }
 
-//(OK)
 void escanearI2C() {
   byte erro, endereco;
   int numDispositivos;
