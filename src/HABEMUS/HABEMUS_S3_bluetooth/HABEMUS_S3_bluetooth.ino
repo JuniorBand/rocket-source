@@ -8,10 +8,14 @@
 #include <BLE2902.h>
 
 // UUIDs para o serviço e características BLE
-#define SERVICE_UUID        "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
-#define ALTITUDE_CHARACTERISTIC_UUID "beb5483e-36e1-4688-b7f5-ea07361b26a8"
-#define ACCEL_GYRO_CHARACTERISTIC_UUID "beb5483e-36e1-4688-b7f5-ea07361b26a9"
-#define STATUS_CHARACTERISTIC_UUID "beb5483e-36e1-4688-b7f5-ea07361b26c0"
+// É crucial usar UUIDs únicos para o seu serviço e características.
+// Você pode gerar UUIDs aleatórios em https://www.uuidgenerator.net/
+#define SERVICE_UUID        "4fafc201-1fb5-459e-8fcc-c5c9c331914b" // UUID do Serviço Principal
+
+// Características para cada tipo de dado a ser transmitido
+#define ALTITUDE_CHARACTERISTIC_UUID "beb5483e-36e1-4688-b7f5-ea07361b26a8" // UUID para a característica de Altitude
+#define ACCEL_CHARACTERISTIC_UUID    "a0b2c3d4-e5f6-7890-1234-567890abcdef" // UUID para a característica de Aceleração e Giroscópio
+#define PARACHUTE_CHARACTERISTIC_UUID "f0e9d8c7-b6a5-4321-fedc-ba9876543210" // UUID para a característica de Status do Paraquedas
 
 /* Definições de pinos/endereços */
 const uint8_t PINO_BUZZER = 12;
@@ -75,30 +79,33 @@ void enviarTabelaBluetooth(float altitude, float acel_x, float acel_y, float ace
                            float gyro_x, float gyro_y, float gyro_z, bool paraquedasAcionado); // Envia os dados para o Bluetooth.
 void atualizarBuffer(float leitura); // Atualiza o buffer de leituras com a nova leitura de altitude.
 
-class MyServerCallbacks: public BLEServerCallbacks {
-public:
-    static bool deviceConnected; 
-    static bool oldDeviceConnected;
+// Definições das características BLE
+BLECharacteristic* pAltitudeCharacteristic;
+BLECharacteristic* pAccelCharacteristic;
+BLECharacteristic* pParachuteCharacteristic;
 
+bool deviceConnected = false;
+bool oldDeviceConnected = false;
+
+// Callback para eventos de conexão/desconexão BLE
+// Esta classe define o comportamento do servidor BLE quando um dispositivo cliente se conecta ou desconecta.
+class MyServerCallbacks: public BLEServerCallbacks {
     void onConnect(BLEServer* pServer) {
-      MyServerCallbacks::deviceConnected = true;
-      Serial.println("Dispositivo BLE conectado!");
+      deviceConnected = true;
+      Serial.println("Dispositivo BLE conectado.");
     };
 
     void onDisconnect(BLEServer* pServer) {
-      MyServerCallbacks::deviceConnected = false;
-      Serial.println("Dispositivo BLE desconectado!");
-      BLEDevice::startAdvertising(); // Reinicia o anúncio para permitir novas conexões
+      deviceConnected = false;
+      Serial.println("Dispositivo BLE desconectado.");
+      // Após a desconexão, reinicia o advertising para permitir novas conexões
+      // Usa pServer->startAdvertising() que é o método correto para reiniciar o anúncio a partir do servidor.
+      pServer->startAdvertising(); 
     }
 };
 
-bool MyServerCallbacks::deviceConnected = false;
-bool MyServerCallbacks::oldDeviceConnected = false;
-
 BLEServer* pServer = NULL;
-BLECharacteristic* pAltitudeCharacteristic = NULL;
-BLECharacteristic* pAccelGyroCharacteristic = NULL;
-BLECharacteristic* pStatusCharacteristic = NULL;
+BLEAdvertising* pAdvertising = NULL; // Adicionado para gerenciar o advertising
 
 void setup() {
   Serial.begin(115200);
@@ -108,42 +115,72 @@ void setup() {
   pinMode(PINO_MOSFET_2, OUTPUT);
   digitalWrite(PINO_MOSFET_2, LOW);
   
-  // Inicialização BLE
-  BLEDevice::init("HABEMUS_S3_BLE"); // Nome do seu dispositivo BLE
+  // Inicialização do Bluetooth Low Energy (BLE)
+  // O nome do dispositivo ("HABEMUS_S3_ROCKET") será visível para outros dispositivos BLE
+  BLEDevice::init("HABEMUS_S3_ROCKET");
+
+  // Criação do servidor BLE
+  // O servidor BLE é o ponto central para interagir com dispositivos clientes (ex: seu celular).
   pServer = BLEDevice::createServer();
+  // Atribui a classe de callbacks (MyServerCallbacks) ao servidor para lidar com eventos de conexão/desconexão.
   pServer->setCallbacks(new MyServerCallbacks());
 
+  // Criação do serviço BLE
+  // Um serviço agrupa características relacionadas. Aqui, temos um serviço para os dados do foguete.
+  // O SERVICE_UUID é o identificador único para este serviço.
   BLEService *pService = pServer->createService(SERVICE_UUID);
 
+  // Criação das características BLE
+  // Cada característica representa um tipo específico de dado que pode ser lido ou notificado.
+  // PROPRIEDADES:
+  //   - PROPERTY_READ: Permite que um cliente leia o valor da característica.
+  //   - PROPERTY_NOTIFY: Permite que o servidor envie notificações automáticas para clientes inscritos quando o valor da característica muda.
+
+  // Característica para Altitude
   pAltitudeCharacteristic = pService->createCharacteristic(
-                      ALTITUDE_CHARACTERISTIC_UUID,
-                      BLECharacteristic::PROPERTY_READ |
-                      BLECharacteristic::PROPERTY_NOTIFY
-                    );
-  pAltitudeCharacteristic->addDescriptor(new BLE2902());
+                                         ALTITUDE_CHARACTERISTIC_UUID,
+                                         BLECharacteristic::PROPERTY_READ |
+                                         BLECharacteristic::PROPERTY_NOTIFY
+                                       );
+  // Adiciona um descritor BLE2902, que é padrão para características com propriedade NOTIFY.
+  // Ele permite que o cliente habilite/desabilite as notificações.
+  pAltitudeCharacteristic->addDescriptor(new BLE2902()); 
 
-  pAccelGyroCharacteristic = pService->createCharacteristic(
-                      ACCEL_GYRO_CHARACTERISTIC_UUID,
-                      BLECharacteristic::PROPERTY_READ |
-                      BLECharacteristic::PROPERTY_NOTIFY
-                    );
-  pAccelGyroCharacteristic->addDescriptor(new BLE2902());
+  // Característica para Aceleração/Giroscópio
+  pAccelCharacteristic = pService->createCharacteristic(
+                                        ACCEL_CHARACTERISTIC_UUID,
+                                        BLECharacteristic::PROPERTY_READ |
+                                        BLECharacteristic::PROPERTY_NOTIFY
+                                      );
+  pAccelCharacteristic->addDescriptor(new BLE2902()); 
 
-  pStatusCharacteristic = pService->createCharacteristic(
-                      STATUS_CHARACTERISTIC_UUID,
-                      BLECharacteristic::PROPERTY_READ |
-                      BLECharacteristic::PROPERTY_NOTIFY
-                    );
-  pStatusCharacteristic->addDescriptor(new BLE2902());
+  // Característica para Status do Paraquedas
+  pParachuteCharacteristic = pService->createCharacteristic(
+                                            PARACHUTE_CHARACTERISTIC_UUID,
+                                            BLECharacteristic::PROPERTY_READ |
+                                            BLECharacteristic::PROPERTY_NOTIFY
+                                          );
+  pParachuteCharacteristic->addDescriptor(new BLE2902()); 
 
+  // Inicia o serviço BLE
+  // Após criar o serviço e suas características, ele precisa ser iniciado para estar disponível.
   pService->start();
-  BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
-  pAdvertising->addServiceUUID(pService->getUUID());
+
+  // Configura o advertising do BLE (Anúncio Bluetooth)
+  // O advertising torna o dispositivo visível para outros dispositivos BLE na área para que possam se conectar.
+  // Obtém a instância do objeto de advertising do dispositivo BLE.
+  pAdvertising = BLEDevice::getAdvertising();
+  // Adiciona o UUID do serviço principal ao advertising, permitindo que clientes descubram o serviço.
+  pAdvertising->addServiceUUID(SERVICE_UUID);
+  // Habilita a resposta de varredura, o que permite que o dispositivo envie informações adicionais quando um scanner o detecta.
   pAdvertising->setScanResponse(true);
-  pAdvertising->setMinPreferred(0x06);  // set value to 0x00 to not advertise this parameter
+  // Define um pequeno intervalo de conexão preferido (min/max) para economizar energia, mas permite conexões rápidas.
+  // 0x06 (7.5ms) e 0x12 (15ms) são valores comuns para conexões de baixa latência.
+  pAdvertising->setMinPreferred(0x06);
   pAdvertising->setMinPreferred(0x12);
+  // Inicia o processo de advertising, tornando o dispositivo detectável.
   BLEDevice::startAdvertising();
-  Serial.println("Dispositivo BLE aguardando conexões...");
+  Serial.println("Aguardando clientes BLE...");
 
   // Inicialização do SD
   if (!SD.begin(PINO_CHIP)) {
@@ -186,16 +223,18 @@ void setup() {
 }
 
 void loop() {
-  // Reconnecta se desconectado
-  if (!MyServerCallbacks::deviceConnected && MyServerCallbacks::oldDeviceConnected) {
-      delay(500); // give the bluetooth stack the chance to get things ready
-      pServer->startAdvertising(); // restart advertising
-      Serial.println("Começando a anunciar BLE...");
-      MyServerCallbacks::oldDeviceConnected = MyServerCallbacks::deviceConnected;
+  // Lógica de reconexão BLE
+  // Se o dispositivo estava conectado e agora não está, reinicia o advertising para permitir uma nova conexão.
+  if (!deviceConnected && oldDeviceConnected) {
+      delay(500); // Pequeno atraso para dar tempo ao stack Bluetooth se reorganizar.
+      pServer->startAdvertising(); // Reinicia o advertising (anúncio) para que o dispositivo possa ser redescoberto.
+      Serial.println("Reiniciando advertising BLE");
+      oldDeviceConnected = deviceConnected;
   }
-  // Conecta se conectado
-  if (MyServerCallbacks::deviceConnected && !MyServerCallbacks::oldDeviceConnected) {
-      MyServerCallbacks::oldDeviceConnected = MyServerCallbacks::deviceConnected;
+  // Lógica de conexão BLE
+  // Se o dispositivo está conectado e não estava antes, atualiza o status.
+  if (deviceConnected && !oldDeviceConnected) {
+      oldDeviceConnected = deviceConnected;
   }
 
   //Lendo os valores de altura, aceleração e angulação
@@ -429,30 +468,29 @@ void printDados(float altitude_relativa, sensors_event_t a1, sensors_event_t a2,
     dataFile.println(); // Nova linha para a próxima entrada de dados.
   }
 
-  // Envia os dados via Bluetooth Low Energy (BLE)
-  if (MyServerCallbacks::deviceConnected) {
-    enviarTabelaBluetooth(altitude_relativa, media_ac_x, media_ac_y, media_ac_z, 
-                          media_gyro_x, media_gyro_y, media_gyro_z, paraquedasAcionado);
+  // Envia os dados formatados via Bluetooth Low Energy (BLE)
+  // Apenas envia os dados se houver um dispositivo BLE conectado.
+  if (deviceConnected) {
+    // Formata os dados de altitude para envio via BLE como uma string e os envia via notificação.
+    // Utiliza 'bmp1.readAltitude()' para ler a altitude do sensor BMP280 principal.
+    String altitudeData = "Alt: " + String(bmp1.readAltitude(), 2) + "m";
+    pAltitudeCharacteristic->setValue(altitudeData.c_str());
+    pAltitudeCharacteristic->notify(); // Envia a notificação para o cliente (dispositivo conectado)
+
+    // Formata os dados de aceleração e giroscópio para envio via BLE.
+    String accelGyroData = "Acel: X: " + String(g1.acceleration.x, 2) + ", Y: " + String(g1.acceleration.y, 2) + ", Z: " + String(g1.acceleration.z, 2) +
+                         " | Giro: X: " + String(g1.gyro.x, 2) + ", Y: " + String(g1.gyro.y, 2) + ", Z: " + String(g1.gyro.z, 2);
+    pAccelCharacteristic->setValue(accelGyroData.c_str());
+    pAccelCharacteristic->notify(); 
+
+    // Formata o status do paraquedas para envio via BLE.
+    // Utiliza 'paraquedasAcionado' para verificar o status e formatar a string.
+    String parachuteStatusData = "Paraquedas: " + String(paraquedasAcionado == 0 ? "Fechado" : "Aberto");
+    pParachuteCharacteristic->setValue(parachuteStatusData.c_str());
+    pParachuteCharacteristic->notify(); 
+
+    delay(50); // Pequeno atraso para evitar inundações de notificações BLE e sobrecarga do dispositivo.
   }
-}
-
-void enviarTabelaBluetooth(float altitude, float acel_x, float acel_y, float acel_z, 
-                           float gyro_x, float gyro_y, float gyro_z, bool paraquedasAcionado) {
-  // Converte os dados para strings para enviar via BLE
-  String altitudeStr = String(altitude, 2);
-  String accelGyroStr = String(acel_x, 2) + "," + String(acel_y, 2) + "," + String(acel_z, 2) +
-                        ";" + String(gyro_x, 2) + "," + String(gyro_y, 2) + "," + String(gyro_z, 2);
-  String statusStr = paraquedasAcionado ? "SIM" : "NAO";
-
-  // Define os valores das características BLE e notifica os clientes
-  pAltitudeCharacteristic->setValue(altitudeStr.c_str());
-  pAltitudeCharacteristic->notify();
-
-  pAccelGyroCharacteristic->setValue(accelGyroStr.c_str());
-  pAccelGyroCharacteristic->notify();
-
-  pStatusCharacteristic->setValue(statusStr.c_str());
-  pStatusCharacteristic->notify();
 }
 
 void escanearI2C() {
