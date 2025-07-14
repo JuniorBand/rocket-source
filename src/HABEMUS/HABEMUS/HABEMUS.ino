@@ -1,14 +1,13 @@
 #include <Wire.h>
-#include <Adafruit_BMP280.h>
-#include <Adafruit_MPU6050.h>
+#include <Adafruit_BMP280.h> // Inclui a biblioteca do altímetro/barômetro.
+#include <Adafruit_MPU6050.h> // Inclui a biblioteca do acelerômetro/giroscópio
 #include <SD.h> // Inclui a biblioteca para leitura/escrita em cartão SD.
-#include <BLEDevice.h>
+#include <BLEDevice.h> // Esse e os headers abaixo incluem as bibliotecas do Bluetooth Low Energy
 #include <BLEServer.h>
 #include <BLEUtils.h>
 #include <BLE2902.h>
 
-// UUIDs para o serviço e características BLE
-// É crucial usar UUIDs únicos para o seu serviço e características.
+// É crucial usar UUIDs únicos para o serviço e características BLE.
 // Você pode gerar UUIDs aleatórios em https://www.uuidgenerator.net/
 #define SERVICE_UUID "4fafc201-1fb5-459e-8fcc-c5c9c331914b" // UUID do Serviço Principal
 
@@ -30,15 +29,16 @@ const uint8_t PINO_CHIP = 9;
 
 
 /* Limites e configurações de voo */
-const float LIMITE_SALTO_ANOMALO = 75.0f;
+const float LIMITE_SALTO_ANOMALO = 75.0f; // Limite anormal de salto entre leituras seguidas.
 const float ALTITUDE_DE_LANCAMENTO = 30.0f; // Altitude para considerar o foguete lançado.
-const float QUEDA = 3.0f; 
-Adafruit_BMP280 bmp1(BMP280_1_ADDRESS);
+const float QUEDA = 3.0f; // Queda de segurança para o acionamento do para-quedas.
+Adafruit_BMP280 bmp1(BMP280_1_ADDRESS); // Cria instância do sensor BMP280 no endereço respectivo (no próprio construtor).
 Adafruit_BMP280 bmp2(BMP280_2_ADDRESS);
-Adafruit_MPU6050 mpu1;
+Adafruit_MPU6050 mpu1; // Cria instância, mas não aceita o endereço no construtor (só no .begin()).
 Adafruit_MPU6050 mpu2;
 File dataFile; // Cria um objeto para o arquivo de dados no cartão SD.
 
+// Status dos sensores. 
 enum SensorStatus {
   SENSOR_OK,
   SENSOR_FALHA_AMBOS_NAN,
@@ -226,26 +226,27 @@ void loop() {
   // Lógica de reconexão BLE
   // Se o dispositivo estava conectado e agora não está, reinicia o advertising para permitir uma nova conexão.
   if (!deviceConnected && oldDeviceConnected) {
-      delay(500); // Pequeno atraso para dar tempo ao stack Bluetooth se reorganizar.
+      delay(100); // Pequeno atraso para dar tempo ao stack Bluetooth se reorganizar.
       pServer->startAdvertising(); // Reinicia o advertising (anúncio) para que o dispositivo possa ser redescoberto.
       Serial.println("Reiniciando advertising BLE");
       oldDeviceConnected = deviceConnected;
   }
-  // Lógica de conexão BLE
+  
+  // Lógica de conexão BLE.
   // Se o dispositivo está conectado e não estava antes, atualiza o status.
   if (deviceConnected && !oldDeviceConnected) {
       oldDeviceConnected = deviceConnected;
   }
 
-  // Calcula o tempo decorrido em segundos
+  // Calcula o tempo decorrido em segundos.
   uint16_t tempoDecorrido = millis() / 1000; 
 
-  //Lendo os valores de altura, aceleração e angulação
+  // Lendo os valores de altura, aceleração e velocidade angular.
   float altitude_atual_1 = bmp1.readAltitude(1013.25);
   float altitude_atual_2 = bmp2.readAltitude(1013.25);
 
-  sensors_event_t a1, g1, t1; // t1 será ignorado
-  sensors_event_t a2, g2, t2; // t2 será ignorado
+  sensors_event_t a1, g1, t1; // t1 será ignorado.
+  sensors_event_t a2, g2, t2; // t2 será ignorado.
   mpu1.getEvent(&a1, &g1, &t1);
   mpu2.getEvent(&a2, &g2, &t2);
 
@@ -258,12 +259,12 @@ void loop() {
   if (sensor_valido != SENSOR_OK) {
     switch (sensor_valido) {
       case SENSOR_FALHA_AMBOS_NAN:
-        finalizarMissao(F("ERRO DE LEITURA DO SENSOR BMP 1 e 2 (NaN)"));
+        finalizarMissao(F("ERRO DE LEITURA DO SENSOR BMP 1 e 2 (NaN)")); // Loop infinito.
         break;
       case SENSOR_FALHA_CONSECUTIVA_ZERADA:
-        finalizarMissao(F("TRES LEITURAS ZERADAS CONSECUTIVAS"));
+        finalizarMissao(F("TRES LEITURAS ZERADAS CONSECUTIVAS")); // Loop infinito.
         break;
-      default:
+      default: // Sensores (0.0f) e (NaN) ou (NaN) e (NaN)
         break;
     }
     return; // Se os sensores não estão medindo corretamente, não continua a execução do loop.
@@ -298,7 +299,7 @@ void loop() {
 
   // Se o foguete ainda não foi lançado, apenas verifica se ultrapassou a altitude de lançamento.
   if (!foguete_lancado) {
-    // !!Perigoso se o foguete cair antes de atingir a altitude de lançamento!!
+    // !!! [PERIGOSO]: se o foguete cair sem para-quedas antes de atingir a altitude de lançamento !!!
     if (altitude_relativa > ALTITUDE_DE_LANCAMENTO) {
       foguete_lancado = true;
       Serial.println(F(">>> LANCAMENTO DETECTADO! ARMANDO SISTEMA DE APOGEU. <<<"));
@@ -332,7 +333,7 @@ void loop() {
   delay(100);
 }
 
-void finalizarMissao(const __FlashStringHelper *razao) {
+void finalizarMissao(const __FlashStringHelper *razao) { // Finaliza missão em caso de erro ou sucesso.
   Serial.println(F("\n================================================="));
   Serial.print(F("FINALIZANDO MISSAO. MOTIVO: "));
   Serial.println(razao);
@@ -357,7 +358,8 @@ void finalizarMissao(const __FlashStringHelper *razao) {
   }
 }
 
-float calcularMedia(float buffer_leituras[]) {
+// Calcula a média de 5 valores válidos de altura.
+float calcularMedia(float buffer_leituras[]) { 
   
   float soma_buffer = 0.0f;
 
@@ -370,7 +372,7 @@ float calcularMedia(float buffer_leituras[]) {
   return altitude_relativa; // Retorna a altitude relativa ajustada.
 }
 
-void atualizarBuffer(float leitura) {
+void atualizarBuffer(float leitura) { // Atualizar array buffer_leituras[].
   if (leitura != 0.0f && !isnan(leitura)) { // Prevenir leituras inválidas.
     buffer_leituras[indice_buffer] = leitura;
     indice_buffer = (indice_buffer + 1) % JANELA_LEITURAS;
@@ -433,6 +435,8 @@ void verificarAltitude(float altitude) {
   }
 }
 
+// Printa os dados de voo no Serial e no cartão SD.
+// Recebe o tempo decorrido, altitude e eventos dos sensores de aceleração e giroscópio.
 void printDados(uint16_t tempoDecorrido, float altitude, sensors_event_t a1, sensors_event_t a2, sensors_event_t g1, sensors_event_t g2) {
   Serial.print(F("Altitude = "));
   Serial.print(altitude);
@@ -450,7 +454,7 @@ void printDados(uint16_t tempoDecorrido, float altitude, sensors_event_t a1, sen
   Serial.print(F("; Y: ")); Serial.print(media_ac_y); Serial.print(F(" m/s^2"));
   Serial.print(F("; Z: ")); Serial.print(media_ac_z); Serial.println(F(" m/s^2."));
 
-  //Print das angulações na memória Flash 
+  //Print das velocidades angulares na memória Flash 
   Serial.print(F("Rotation X: ")); Serial.print(media_gyro_x); Serial.print(F(" rad/s"));
   Serial.print(F("; Y: ")); Serial.print(media_gyro_y); Serial.print(F(" rad/s"));
   Serial.print(F("; Z: ")); Serial.print(media_gyro_z); Serial.println(F(" rad/s."));
@@ -467,7 +471,7 @@ void printDados(uint16_t tempoDecorrido, float altitude, sensors_event_t a1, sen
     dataFile.print("; Y: " + String(media_ac_y) + " m/s^2");
     dataFile.println("; Z: " + String(media_ac_z) + " m/s^2");
 
-    //Print das angulações na memória Flash 
+    //Print das velocidades angulares na memória Flash 
     dataFile.print("Rotation X: " + String(media_gyro_x) + " rad/s");
     dataFile.print("; Y: " + String(media_gyro_y) + " rad/s");
     dataFile.print("; Z: " + String(media_gyro_z) + " rad/s");
@@ -480,6 +484,7 @@ void printDados(uint16_t tempoDecorrido, float altitude, sensors_event_t a1, sen
 
 }
 
+// Esta função envia os dados de voo via Bluetooth Low Energy (BLE).
 void enviarTabelaBluetooth(uint16_t tempoDecorrido, float altitude, float acel_x, float acel_y, float acel_z,
                             float gyro_x, float gyro_y, float gyro_z, bool paraquedasAcionado) {
   // Apenas envia os dados se houver um dispositivo BLE conectado.
@@ -506,6 +511,8 @@ void enviarTabelaBluetooth(uint16_t tempoDecorrido, float altitude, float acel_x
   }
 }
 
+// Esta função escaneia o barramento I2C para detectar dispositivos conectados.
+// Ela imprime os endereços dos dispositivos encontrados e finaliza a missão se nenhum dispositivo for detectado.
 void escanearI2C() {
   byte erro, endereco;
   int numDispositivos;
@@ -542,7 +549,8 @@ void escanearI2C() {
   Serial.println(F("Concluido."));
 }
 
-
+// Esta função verifica se os sensores estão funcionando corretamente nos endereços especificados.
+// Se algum sensor falhar, a missão é finalizada com uma mensagem de erro.
 void verificarSensores(uint8_t ADDRESS_1, uint8_t ADDRESS_2, uint8_t ADDRESS_3, uint8_t  ADDRESS_4){
   //Tentando inicializar os BMPs
   if (!bmp1.begin(ADDRESS_1)) {
@@ -567,7 +575,7 @@ void verificarSensores(uint8_t ADDRESS_1, uint8_t ADDRESS_2, uint8_t ADDRESS_3, 
   Serial.println(F("Sensores BMP e MPU inicializados e funcionando."));
 }
 
-void acionarBuzzer(int timeOn, int timeOff) { 
+void acionarBuzzer(int timeOn, int timeOff) { // Aciona o buzzer por timeOn milissegundos e desliga por timeOff milissegundos.
   digitalWrite(PINO_BUZZER, HIGH); 
   delay(timeOn);
   digitalWrite(PINO_BUZZER, LOW);  
