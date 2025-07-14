@@ -456,6 +456,12 @@ void inicializarBLE(const char* deviceName) { // Inicializa o Bluetooth Low Ener
   // Criação do servidor BLE
   // O nome do dispositivo ("HABEMUS_S3_ROCKET") será visível para outros dispositivos BLE
   BLEDevice::init(deviceName);
+
+  // Define o tamanho máximo da MTU (Maximum Transmission Unit) para 517 bytes (MAX) ou o que for adequado.
+  // Isso deve ser feito ANTES de criar o servidor BLE
+  BLEDevice::setMTU(256); // Aumenta o tamanho da MTU para permitir que pacotes maiores sejam transmitidos, se necessário.
+
+
   // O servidor BLE é o ponto central para interagir com dispositivos clientes (ex: seu celular).
   pServer = BLEDevice::createServer();
   // Atribui a classe de callbacks (MyServerCallbacks) ao servidor para lidar com eventos de conexão/desconexão.
