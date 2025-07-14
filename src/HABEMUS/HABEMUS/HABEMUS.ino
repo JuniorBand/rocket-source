@@ -1,12 +1,23 @@
 #include <Wire.h>
 #include <Adafruit_BMP280.h>
 #include <Adafruit_MPU6050.h>
-#include <BluetoothSerial.h>
 #include <SD.h> // Inclui a biblioteca para leitura/escrita em cartão SD.
+#include <BLEDevice.h>
+#include <BLEServer.h>
+#include <BLEUtils.h>
+#include <BLE2902.h>
 
+// UUIDs para o serviço e características BLE
+// É crucial usar UUIDs únicos para o seu serviço e características.
+// Você pode gerar UUIDs aleatórios em https://www.uuidgenerator.net/
+#define SERVICE_UUID "4fafc201-1fb5-459e-8fcc-c5c9c331914b" // UUID do Serviço Principal
+
+// Características para cada tipo de dado a ser transmitido
+#define ALTITUDE_CHARACTERISTIC_UUID "beb5483e-36e1-4688-b7f5-ea07361b26a8" // UUID para a característica de Altitude
+#define ACCEL_CHARACTERISTIC_UUID    "a0b2c3d4-e5f6-7890-1234-567890abcdef" // UUID para a característica de Aceleração e Giroscópio
+#define PARACHUTE_CHARACTERISTIC_UUID "f0e9d8c7-b6a5-4321-fedc-ba9876543210" // UUID para a característica de Status do Paraquedas
 
 /* Definições de pinos/endereços */
-// *[ALTERAÇÃO/SUBSTITUIÇÃO]* Os const uint8_t foram substituidos por uint8_t (0-255) por motivos de segurança, mesmo ocupando um pequeno espaço.
 const uint8_t PINO_BUZZER = 12;
 const uint8_t PINO_MOSFET_1 = 11;
 const uint8_t PINO_MOSFET_2 = 10;
@@ -26,7 +37,6 @@ Adafruit_BMP280 bmp1(BMP280_1_ADDRESS);
 Adafruit_BMP280 bmp2(BMP280_2_ADDRESS);
 Adafruit_MPU6050 mpu1;
 Adafruit_MPU6050 mpu2;
-BluetoothSerial serialBT;
 File dataFile; // Cria um objeto para o arquivo de dados no cartão SD.
 
 enum SensorStatus {
@@ -62,12 +72,40 @@ void escanearI2C(void); // Escaneia o barramento I2C para detectar dispositivos.
 void finalizarMissao(const __FlashStringHelper *razao); // Finaliza a missão com uma razão específica.
 void verificarSensores(uint8_t ADDRESS_1, uint8_t ADDRESS_2, uint8_t ADDRESS_3, uint8_t  ADDRESS_4); // Verifica se os sensores estão funcionando corretamente nos seus endereços.
 SensorStatus validarSensores(float altitude_atual_1, float altitude_atual_2); // Valida as leituras dos sensores.
-void printDados(float altitude, sensors_event_t a1, sensors_event_t a2, sensors_event_t g1, sensors_event_t g2); // Imprime os dados no Serial e no cartão SD. 
+void printDados(uint16_t tempoDecorrido, float altitude, sensors_event_t a1, sensors_event_t a2, sensors_event_t g1, sensors_event_t g2); // Imprime os dados no Serial e no cartão SD. 
 void acionarBuzzer(int timeOn, int timeOff);  // Buzzer contínuo de timeOn em timeOff ms.
 float calcularMedia(float buffer_leituras[]); // Calcula a média das leituras de altitude.
-void enviarTabelaBluetooth(float altitude, float acel_x, float acel_y, float acel_z, 
+void enviarTabelaBluetooth(uint16_t tempoDecorrido, float altitude, float acel_x, float acel_y, float acel_z, 
                            float gyro_x, float gyro_y, float gyro_z, bool paraquedasAcionado); // Envia os dados para o Bluetooth.
 void atualizarBuffer(float leitura); // Atualiza o buffer de leituras com a nova leitura de altitude.
+
+// Definições das características BLE
+BLECharacteristic* pAltitudeCharacteristic;
+BLECharacteristic* pAcelGyroCharacteristic;
+BLECharacteristic* pParachuteCharacteristic;
+
+bool deviceConnected = false;
+bool oldDeviceConnected = false;
+
+// Callback para eventos de conexão/desconexão BLE
+// Esta classe define o comportamento do servidor BLE quando um dispositivo cliente se conecta ou desconecta.
+class MyServerCallbacks: public BLEServerCallbacks {
+    void onConnect(BLEServer* pServer) {
+      deviceConnected = true;
+      Serial.println("Dispositivo BLE conectado.");
+    };
+
+    void onDisconnect(BLEServer* pServer) {
+      deviceConnected = false;
+      Serial.println("Dispositivo BLE desconectado.");
+      // Após a desconexão, reinicia o advertising para permitir novas conexões
+      // Usa pServer->startAdvertising() que é o método correto para reiniciar o anúncio a partir do servidor.
+      pServer->startAdvertising(); 
+    }
+};
+
+BLEServer* pServer = NULL;
+BLEAdvertising* pAdvertising = NULL; // Adicionado para gerenciar o advertising
 
 void setup() {
   Serial.begin(115200);
@@ -76,15 +114,84 @@ void setup() {
   digitalWrite(PINO_MOSFET_1, LOW);
   pinMode(PINO_MOSFET_2, OUTPUT);
   digitalWrite(PINO_MOSFET_2, LOW);
-  serialBT.begin("ESP32-BT");
-  Serial.println("Bluetooth inicializado. Conecte-se ao dispositivo via Serial Bluetooth Terminal.");
+  
+  // Inicialização do Bluetooth Low Energy (BLE)
+  // O nome do dispositivo ("HABEMUS_S3_ROCKET") será visível para outros dispositivos BLE
+  BLEDevice::init("HABEMUS_S3_ROCKET");
+
+  // Criação do servidor BLE
+  // O servidor BLE é o ponto central para interagir com dispositivos clientes (ex: seu celular).
+  pServer = BLEDevice::createServer();
+  // Atribui a classe de callbacks (MyServerCallbacks) ao servidor para lidar com eventos de conexão/desconexão.
+  pServer->setCallbacks(new MyServerCallbacks());
+
+  // Criação do serviço BLE
+  // Um serviço agrupa características relacionadas. Aqui, temos um serviço para os dados do foguete.
+  // O SERVICE_UUID é o identificador único para este serviço.
+  BLEService *pService = pServer->createService(SERVICE_UUID);
+
+  // Criação das características BLE
+  // Cada característica representa um tipo específico de dado que pode ser lido ou notificado.
+  // PROPRIEDADES:
+  //   - PROPERTY_READ: Permite que um cliente leia o valor da característica.
+  //   - PROPERTY_NOTIFY: Permite que o servidor envie notificações automáticas para clientes inscritos quando o valor da característica muda.
+
+  // Característica para Altitude
+  pAltitudeCharacteristic = pService->createCharacteristic(
+                                         ALTITUDE_CHARACTERISTIC_UUID,
+                                         BLECharacteristic::PROPERTY_READ |
+                                         BLECharacteristic::PROPERTY_NOTIFY
+                                       );
+  // Adiciona um descritor BLE2902, que é padrão para características com propriedade NOTIFY.
+  // Ele permite que o cliente habilite/desabilite as notificações.
+  pAltitudeCharacteristic->addDescriptor(new BLE2902()); 
+
+  // Característica para Aceleração/Giroscópio
+  pAcelGyroCharacteristic = pService->createCharacteristic(
+                                        ACCEL_CHARACTERISTIC_UUID,
+                                        BLECharacteristic::PROPERTY_READ |
+                                        BLECharacteristic::PROPERTY_NOTIFY
+                                      );
+  pAcelGyroCharacteristic->addDescriptor(new BLE2902()); 
+
+  // Característica para Status do Paraquedas
+  pParachuteCharacteristic = pService->createCharacteristic(
+                                            PARACHUTE_CHARACTERISTIC_UUID,
+                                            BLECharacteristic::PROPERTY_READ |
+                                            BLECharacteristic::PROPERTY_NOTIFY
+                                          );
+  pParachuteCharacteristic->addDescriptor(new BLE2902()); 
+
+  // Inicia o serviço BLE
+  // Após criar o serviço e suas características, ele precisa ser iniciado para estar disponível.
+  pService->start();
+
+  // Configura o advertising do BLE (Anúncio Bluetooth)
+  // O advertising torna o dispositivo visível para outros dispositivos BLE na área para que possam se conectar.
+  // Obtém a instância do objeto de advertising do dispositivo BLE.
+  pAdvertising = BLEDevice::getAdvertising();
+  // Adiciona o UUID do serviço principal ao advertising, permitindo que clientes descubram o serviço.
+  pAdvertising->addServiceUUID(SERVICE_UUID);
+  // Habilita a resposta de varredura, o que permite que o dispositivo envie informações adicionais quando um scanner o detecta.
+  pAdvertising->setScanResponse(true);
+  // Define um pequeno intervalo de conexão preferido (min/max) para economizar energia, mas permite conexões rápidas.
+  // 0x06 (7.5ms) e 0x12 (15ms) são valores comuns para conexões de baixa latência.
+  pAdvertising->setMinPreferred(0x06);
+  pAdvertising->setMinPreferred(0x12);
+  // Inicia o processo de advertising, tornando o dispositivo detectável.
+  BLEDevice::startAdvertising();
+  Serial.println("Aguardando clientes BLE...");
 
   // Inicialização do SD
   if (!SD.begin(PINO_CHIP)) {
     Serial.println("Falha na inicialização do cartão SD!");
-    finalizarMissao(F("ERRO CRITICO NA INICIALIZACAO DO CARTAO SD")); // Adicionado: Finaliza a missão se o SD falhar
+    finalizarMissao(F("ERRO CRITICO NA INICIALIZACAO DO CARTAO SD")); 
   } else {
     Serial.println("Cartão SD inicializado com sucesso!");
+    dataFile = SD.open("dados.txt", FILE_WRITE);
+    if (dataFile) {
+      dataFile.println("Registro de Dados de Voo - HABEMUS");
+    }
   }
 
   acionarBuzzer(250, 250); // Buzzer para indicar a inicialização.
@@ -116,9 +223,26 @@ void setup() {
 }
 
 void loop() {
+  // Lógica de reconexão BLE
+  // Se o dispositivo estava conectado e agora não está, reinicia o advertising para permitir uma nova conexão.
+  if (!deviceConnected && oldDeviceConnected) {
+      delay(500); // Pequeno atraso para dar tempo ao stack Bluetooth se reorganizar.
+      pServer->startAdvertising(); // Reinicia o advertising (anúncio) para que o dispositivo possa ser redescoberto.
+      Serial.println("Reiniciando advertising BLE");
+      oldDeviceConnected = deviceConnected;
+  }
+  // Lógica de conexão BLE
+  // Se o dispositivo está conectado e não estava antes, atualiza o status.
+  if (deviceConnected && !oldDeviceConnected) {
+      oldDeviceConnected = deviceConnected;
+  }
+
+  // Calcula o tempo decorrido em segundos
+  uint16_t tempoDecorrido = millis() / 1000; 
+
   //Lendo os valores de altura, aceleração e angulação
   float altitude_atual_1 = bmp1.readAltitude(1013.25);
-  float altitude_atual_2 = bmp1.readAltitude(1013.25);
+  float altitude_atual_2 = bmp2.readAltitude(1013.25);
 
   sensors_event_t a1, g1, t1; // t1 será ignorado
   sensors_event_t a2, g2, t2; // t2 será ignorado
@@ -160,15 +284,6 @@ void loop() {
       Serial.println(F("AGUARDANDO LANCAMENTO..."));
       Serial.println(F("================================================="));
       
-      dataFile = SD.open("dados.txt", FILE_WRITE);
-      if (dataFile) {
-        dataFile.println("Registro de Dados de Voo - HABEMUS");
-      }
-
-      // if(SerialBT.available()){
-      //     serialBT.write()
-      // }
-
     }
 
     delay(100); 
@@ -177,9 +292,8 @@ void loop() {
   
   /* --- Fase de Operação Normal (Após a Calibração Inicial) --- */  
   float altitude_relativa = calcularMedia(buffer_leituras);
-  printDados(altitude_relativa, a1, a2, g1, g2);
+  printDados(tempoDecorrido, altitude_relativa, a1, a2, g1, g2);
 
-  //(OK)
   /* --- Lógica de voo dividida por estado (Aguardando/Em Voo) --- */
 
   // Se o foguete ainda não foi lançado, apenas verifica se ultrapassou a altitude de lançamento.
@@ -319,20 +433,19 @@ void verificarAltitude(float altitude) {
   }
 }
 
-void printDados(float altitude_relativa, sensors_event_t a1, sensors_event_t a2, sensors_event_t g1, sensors_event_t g2){
+void printDados(uint16_t tempoDecorrido, float altitude, sensors_event_t a1, sensors_event_t a2, sensors_event_t g1, sensors_event_t g2) {
   Serial.print(F("Altitude = "));
-  Serial.print(altitude_relativa);
+  Serial.print(altitude);
   Serial.println(F(" m"));
 
   float media_ac_x = (a1.acceleration.x + a2.acceleration.x)/2;
   float media_ac_y = (a1.acceleration.y + a2.acceleration.y)/2;
   float media_ac_z = (a1.acceleration.z + a2.acceleration.z)/2;
-  float media_gyro_x = (g1.acceleration.x + g2.acceleration.x)/2;
-  float media_gyro_y = (g1.acceleration.y + g2.acceleration.y)/2;
-  float media_gyro_z = (g1.acceleration.z + g2.acceleration.z)/2;
+  float media_gyro_x = (g1.gyro.x + g2.gyro.x)/2;
+  float media_gyro_y = (g1.gyro.y + g2.gyro.y)/2;
+  float media_gyro_z = (g1.gyro.z + g2.gyro.z)/2;
 
   //Print das acelerações na memória Flash 
-  //printMedidas(media_ac_x, media_ac_y, media_ac_z, media_gyro_x, media_gyro_y, media_gyro_z)
   Serial.print(F("Acceleration X: ")); Serial.print(media_ac_x); Serial.print(F(" m/s^2"));
   Serial.print(F("; Y: ")); Serial.print(media_ac_y); Serial.print(F(" m/s^2"));
   Serial.print(F("; Z: ")); Serial.print(media_ac_z); Serial.println(F(" m/s^2."));
@@ -344,12 +457,15 @@ void printDados(float altitude_relativa, sensors_event_t a1, sensors_event_t a2,
 
   //Print no cartão SD
   if (dataFile) { // Se o arquivo foi aberto com sucesso:
-    dataFile.print("Altitude: " + String(altitude_relativa) + ", "); // Registra F(a altitude no ar)quivo.
+
+    dataFile.println("Tempo: " + String(tempoDecorrido) + " s."); // Registra a altitude no arquivo.
+
+    dataFile.println("Altitude: " + String(altitude) + " m."); // Registra a altitude no arquivo.
     
     //Print das acelerações na memória Flash 
     dataFile.print("Acceleration X: "+ String(media_ac_x) + " m/s^2");
     dataFile.print("; Y: " + String(media_ac_y) + " m/s^2");
-    dataFile.print("; Z: " + String(media_ac_z) + " m/s^2");
+    dataFile.println("; Z: " + String(media_ac_z) + " m/s^2");
 
     //Print das angulações na memória Flash 
     dataFile.print("Rotation X: " + String(media_gyro_x) + " rad/s");
@@ -358,121 +474,102 @@ void printDados(float altitude_relativa, sensors_event_t a1, sensors_event_t a2,
     dataFile.println(); // Nova linha para a próxima entrada de dados.
   }
 
-  // Envia os dados via Bluetooth
-  enviarTabelaBluetooth(altitude_relativa, media_ac_x, media_ac_y, media_ac_z, 
-                        media_gyro_x, media_gyro_y, media_gyro_z, paraquedasAcionado);
+  // Envia os dados formatados via Bluetooth Low Energy (BLE)
+  enviarTabelaBluetooth(tempoDecorrido, altitude, media_ac_x, media_ac_y, media_ac_z, 
+    media_gyro_x, media_gyro_y, media_gyro_z, paraquedasAcionado);
 
 }
 
-void enviarTabelaBluetooth(float altitude, float acel_x, float acel_y, float acel_z, 
-                           float gyro_x, float gyro_y, float gyro_z, bool paraquedasAcionado) {
-  // Move o cursor para o início da tela e limpa a tela
-  serialBT.print("\033[H"); // Move o cursor para o início da tela
-  serialBT.print("\033[J"); // Limpa a tela
+void enviarTabelaBluetooth(uint16_t tempoDecorrido, float altitude, float acel_x, float acel_y, float acel_z,
+                            float gyro_x, float gyro_y, float gyro_z, bool paraquedasAcionado) {
+  // Apenas envia os dados se houver um dispositivo BLE conectado.
+  if (deviceConnected) {
+    // Formata os dados de altitude para envio via BLE como uma string e os envia via notificação.
+    // Inclui o tempo decorrido.
+    String altitudeData = "T: " + String(tempoDecorrido) + "s | Alt: " + String(altitude, 2) + "m";
+    pAltitudeCharacteristic->setValue(altitudeData.c_str());
+    pAltitudeCharacteristic->notify(); // Envia a notificação para o cliente (dispositivo conectado)
 
-  // Calcula o tempo decorrido em segundos
-  uint16_t tempoDecorrido = millis() / 1000; // Converte para segundos
+    // Formata os dados de aceleração e giroscópio para envio via BLE.
+    String acelGyroDados = "Acel: X: " + String(acel_x, 2) + ", Y: " + String(acel_y, 2) + ", Z: " + String(acel_z, 2) +
+                         " | Giro: X: " + String(gyro_x, 2) + ", Y: " + String(gyro_y, 2) + ", Z: " + String(gyro_z, 2);
+    pAcelGyroCharacteristic->setValue(acelGyroDados.c_str());
+    pAcelGyroCharacteristic->notify(); 
 
-  // Envia os nomes das variáveis (cabeçalho da tabela)
-  serialBT.println(F("Tempo | Altitude | Aceleração (X, Y, Z) | Giroscópio (X, Y, Z) | Paraquedas"));
-  serialBT.println(F("------|----------|----------------------|----------------------|-----------"));
+    // Formata o status do paraquedas para envio via BLE.
+    // Utiliza 'paraquedasAcionado' para verificar o status e formatar a string.
+    String parachuteStatusDados = "Paraquedas: " + String(paraquedasAcionado == 0 ? "Fechado" : "Aberto");
+    pParachuteCharacteristic->setValue(parachuteStatusDados.c_str());
+    pParachuteCharacteristic->notify(); 
 
-  // Envia os valores atualizados
-  serialBT.print(tempoDecorrido); serialBT.print(F(" s | "));
-  serialBT.print(altitude, 2); serialBT.print(F(" m | "));
-  serialBT.print(acel_x, 2); serialBT.print(F(", "));
-  serialBT.print(acel_y, 2); serialBT.print(F(", "));
-  serialBT.print(acel_z, 2); serialBT.print(F(" m/s^2 | "));
-  serialBT.print(gyro_x, 2); serialBT.print(F(", "));
-  serialBT.print(gyro_y, 2); serialBT.print(F(", "));
-  serialBT.print(gyro_z, 2); serialBT.print(F(" rad/s | "));
-  serialBT.println(paraquedasAcionado ? F("SIM") : F("NAO"));
-}
-
-void verificarSensores(uint8_t ADDRESS_1, uint8_t ADDRESS_2, uint8_t ADDRESS_3, uint8_t  ADDRESS_4){
-  //Tentando inicializar os BMPs
-  Serial.println(F("Tentando inicializar o primeiro BMP280 no endereco 0x76..."));
-  if (!bmp1.begin(ADDRESS_1)) {
-    Serial.println(F("================================================="));
-    Serial.println(F("ERRO CRÍTICO: Nao foi possivel encontrar o primeiro sensor BMP280 valido no 0x76!"));
-    escanearI2C();
-    finalizarMissao(F("ERRO CRITICO NA INICIALIZACAO DO SENSOR"));
-  } else {
-    Serial.println(F("Primeiro BMP280 encontrado com sucesso no endereco 0x76!"));
+    delay(50); // Pequeno atraso para evitar inundações de notificações BLE e sobrecarga do dispositivo.
   }
-
-
-  Serial.println(F("Tentando inicializar o segundo BMP280 no endereco 0x77..."));
-  if (!bmp2.begin(ADDRESS_2)) {
-    Serial.println(F("================================================="));
-    Serial.println(F("ERRO CRÍTICO: Nao foi possivel encontrar o segundo sensor BMP280 valido no 0x77!"));
-    escanearI2C();
-    finalizarMissao(F("ERRO CRITICO NA INICIALIZACAO DO SENSOR"));
-  } else {
-    Serial.println(F("Segundo BMP280 encontrado com sucesso no endereco 0x77!"));
-  }
-
-  //Tentando inicializar os MPUs
-  Serial.println(F("Tentando inicializar o primeiro MPU6050 no endereco 0x68..."));
-  if (!mpu1.begin(ADDRESS_3)) {
-    Serial.println(F("================================================="));
-    Serial.println(F("ERRO CRÍTICO: Nao foi possivel encontrar o primeiro sensor MPU6050 valido no 0x68!"));
-    escanearI2C();
-    finalizarMissao(F("ERRO CRITICO NA INICIALIZACAO DO SENSOR"));
-  } else {
-  Serial.println(F("Primeiro MPU6050 encontrado com sucesso no endereco 0x68!"));
-  }
-
-  Serial.println(F("Tentando inicializar o primeiro MPU6050 no endereco 0x69..."));
-  if (!mpu2.begin(ADDRESS_4)) {
-    Serial.println(F("================================================="));
-    Serial.println(F("ERRO CRÍTICO: Nao foi possivel encontrar o segundo sensor MPU6050 valido no 0x69!"));
-    escanearI2C();
-    finalizarMissao(F("ERRO CRITICO NA INICIALIZACAO DO SENSOR"));
-  } else {
-  Serial.println(F("Segundo MPU6050 encontrado com sucesso no endereco 0x69!"));
-  }
-}
-
-void acionarBuzzer(int timeOn, int timeOff) { // *[ALTERAÇÃO]* Buzzer contínuo de timeOn em timeOff ms.
-  digitalWrite(PINO_BUZZER, HIGH); // Aciona o buzzer.
-  delay(timeOn);
-  digitalWrite(PINO_BUZZER, LOW); // Desliga o buzzer.
-  delay(timeOff); 
 }
 
 void escanearI2C() {
   byte erro, endereco;
   int numDispositivos;
-  Serial.println(F("Iniciando Escaner I2C..."));
+
+  Serial.println(F("Escaneando barramento I2C..."));
   numDispositivos = 0;
-  
   for (endereco = 1; endereco < 127; endereco++) {
     Wire.beginTransmission(endereco);
     erro = Wire.endTransmission();
-    
+
     if (erro == 0) {
       Serial.print(F("Dispositivo I2C encontrado no endereco 0x"));
-      
-      if (endereco < 16) { Serial.print(F("0")); }
+      if (endereco < 16) {
+        Serial.print(F("0"));
+      }
       Serial.print(endereco, HEX);
-      Serial.println(F("   !"));
+      Serial.println();
       numDispositivos++;
-
     } else if (erro == 4) {
-
       Serial.print(F("Erro desconhecido no endereco 0x"));
-
-      if (endereco < 16) { Serial.print(F("0")); }
+      if (endereco < 16) {
+        Serial.print(F("0"));
+      }
       Serial.println(endereco, HEX);
-
     }
   }
-
   if (numDispositivos == 0) {
     Serial.println(F("Nenhum dispositivo I2C encontrado."));
+    finalizarMissao(F("NENHUM DISPOSITIVO I2C ENCONTRADO"));
+  } else {
+    Serial.print(numDispositivos);
+    Serial.println(F(" dispositivo(s) I2C encontrado(s)."));
+  }
+  Serial.println(F("Concluido."));
+}
+
+
+void verificarSensores(uint8_t ADDRESS_1, uint8_t ADDRESS_2, uint8_t ADDRESS_3, uint8_t  ADDRESS_4){
+  //Tentando inicializar os BMPs
+  if (!bmp1.begin(ADDRESS_1)) {
+    Serial.println(F("Não foi possível encontrar um sensor BMP280 válido 1, verifique a fiação!"));
+    finalizarMissao(F("FALHA SENSOR BMP1"));
+  }
+  if (!bmp2.begin(ADDRESS_2)) {
+    Serial.println(F("Não foi possível encontrar um sensor BMP280 válido 2, verifique a fiação!"));
+    finalizarMissao(F("FALHA SENSOR BMP2"));
   }
 
-  Serial.println(F("================================================="));
-  delay(1000);
+  //Tentando inicializar os MPUs
+  if (!mpu1.begin(ADDRESS_3)) {
+    Serial.println(F("Não foi possível encontrar um sensor MPU6050 válido 1, verifique a fiação!"));
+    finalizarMissao(F("FALHA SENSOR MPU1"));
+  }
+  if (!mpu2.begin(ADDRESS_4)) {
+    Serial.println(F("Não foi possível encontrar um sensor MPU6050 válido 2, verifique a fiação!"));
+    finalizarMissao(F("FALHA SENSOR MPU2"));
+  }
+
+  Serial.println(F("Sensores BMP e MPU inicializados e funcionando."));
 }
+
+void acionarBuzzer(int timeOn, int timeOff) { 
+  digitalWrite(PINO_BUZZER, HIGH); 
+  delay(timeOn);
+  digitalWrite(PINO_BUZZER, LOW);  
+  delay(timeOff); 
+} 
