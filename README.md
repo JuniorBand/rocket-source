@@ -129,7 +129,8 @@ Formatação dos Dados: Os dados de altitude, aceleração/giroscópio e status 
 `pCharacteristic->notify()`: Dispara uma notificação para o cliente conectado, enviando o novo valor da característica em tempo real. Um pequeno delay(50) é adicionado para evitar sobrecarga no barramento BLE.
 
 - Espaço:
--       Sketch uses 1032834 bytes (78%) of program storage space. Maximum is 1310720 bytes. Global variables use 48352 bytes (14%) of dynamic memory, leaving 279328 bytes for local variables. Maximum is 327680 bytes.
+-       Sketch uses 1032054 bytes (78%) of program storage space. Maximum is 1310720 bytes.
+Global variables use 48344 bytes (14%) of dynamic memory, leaving 279336 bytes for local variables. Maximum is 327680 bytes.
 
 ## Sensores utilizados
 - `BMP280`-> Barômetro/Altímetro -> (m)

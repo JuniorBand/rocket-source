@@ -104,6 +104,10 @@ void setup() {
   mpu1.setGyroRange(MPU6050_RANGE_500_DEG);
   mpu2.setAccelerometerRange(MPU6050_RANGE_8_G);
   mpu2.setGyroRange(MPU6050_RANGE_500_DEG);
+  mpu1.setFilterBandwidth(MPU6050_BAND_260_HZ); // Define a largura de banda do filtro do MPU6050 para 260Hz.
+  mpu2.setFilterBandwidth(MPU6050_BAND_260_HZ);
+  mpu1.setCycleRate(MPU6050_CYCLE_40_HZ); // Define a taxa de amostragem do MPU6050 para 40Hz.
+  mpu2.setCycleRate(MPU6050_CYCLE_40_HZ);
 
   Serial.println(F("Iniciando fase de calibracao de altitude..."));
 
@@ -113,7 +117,7 @@ void setup() {
 void loop() {
   //Lendo os valores de altura, aceleração e angulação
   float altitude_atual_1 = bmp1.readAltitude(1013.25);
-  float altitude_atual_2 = bmp1.readAltitude(1013.25);
+  float altitude_atual_2 = bmp2.readAltitude(1013.25);
 
   sensors_event_t a1, g1, t1; // t1 será ignorado
   sensors_event_t a2, g2, t2; // t2 será ignorado
