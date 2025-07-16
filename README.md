@@ -1,8 +1,9 @@
-# rocket-source
+# rocket-source (Por enquanto, o código em desenvolvimento está na branch dev)
 //Descreva o foguete aqui (sintaxe do .md: [(https://encurtador.com.br/iRkUC)](https://encurtador.com.br/iRkUC))
 
 
 ## Estrutura do código
+
 
 
 
