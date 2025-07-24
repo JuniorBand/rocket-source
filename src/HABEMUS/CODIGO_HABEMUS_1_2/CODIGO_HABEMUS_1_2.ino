@@ -31,45 +31,51 @@ MODIFICADO: O objeto Adafruit_BMP280 'bmp' foi movido de volta para o escopo glo
 7. **NOVO MENU INICIAL:**
    - Adicionado um cabeçalho "Computador de Voo Habemos Rocket v1.2" na inicialização.
 ============================================================================
+REMODELADO COM BASE NA ANÁLISE:
+    - Convenção de Nomenclatura: Funções camelCase, Variáveis snake_case, Constantes SCREAMING_SNAKE_CASE.
+    - loop(): Linhas de buffer movidas. Tratamento de leitura zero com 'return;'.
+    - lerAltitudeBmp280(): Remoção de 'extern' redundante.
+    - Manutenção de todas as funcionalidades anteriores (LED, lógica de recuperação, etc.).
+============================================================================
 */
 
 #include <Wire.h>
 #include <Adafruit_BMP280.h> // Biblioteca correta para o BMP280
 
-/* Definições de pinos */
-#define pinoBuzzer 11
-#define pinoMosfet1 9
-#define pinoMosfet2 10
+/* Definições de pinos (SCREAMING_SNAKE_CASE) */
+#define PINO_BUZZER 11
+#define PINO_MOSFET_1 9
+#define PINO_MOSFET_2 10
 #define LED_STATUS_PIN LED_BUILTIN // Pino do LED embutido do Arduino (geralmente pino 13)
 
-/* Limites e configurações de voo */
+/* Limites e configurações de voo (SCREAMING_SNAKE_CASE) */
 const float LIMITE_SALTO_ANOMALO = 75.0;
 const float ALTITUDE_DE_LANCAMENTO = 30.0;
 
-// NOVAS CONSTANTES PARA A LÓGICA DE RECUPERAÇÃO
+// Constantes para a lógica de recuperação (SCREAMING_SNAKE_CASE)
 const float ALTITUDE_LIMITE_X = 100.0; // Altura de corte para a lógica de recuperação (X metros)
 const float DESCIDA_MINIMA_Y = 10.0;    // Descida mínima para acionar a recuperação (Y metros)
 
 
 // Objeto do sensor: DECLARADO GLOBALMENTE para ser acessível em setup() e loop().
-// Esse é o padrão e prática no Arduino para objetos de hardware.
 Adafruit_BMP280 bmp;
 
-// PROTÓTIPOS DAS FUNÇÕES
-void verificaAltitude(float altitude, float& apogeuRef, bool& acionamentoIniciadoRef, bool& fogueteLancadoRef, void (*finalizar)(const __FlashStringHelper *));
-void finalizarMissao(const __FlashStringHelper *razao);
-float lerAltitudeBMP280();
+// PROTÓTIPOS DAS FUNÇÕES (camelCase)
+void verificaAltitude(float altitude, float& apogeu_ref, bool& acionamento_iniciado_ref, bool& foguete_lancado_ref, void (*finalizar)(const __FlashStringHelper *));
+void finalizarMissao(const __FlashStringHelper *razao_missao);
+float lerAltitudeBmp280(); // Renomeada para camelCase
 
 
+// setup() função (camelCase)
 void setup() {
   Serial.begin(115200);
-  pinMode(pinoBuzzer, OUTPUT);
-  pinMode(pinoMosfet1, OUTPUT);
-  pinMode(pinoMosfet2, OUTPUT);
-  pinMode(LED_STATUS_PIN, OUTPUT); // Configura o pino do LED como saída
-  digitalWrite(pinoMosfet1, LOW);
-  digitalWrite(pinoMosfet2, LOW);
-  digitalWrite(LED_STATUS_PIN, LOW); // Garante que o LED começa desligado
+  pinMode(PINO_BUZZER, OUTPUT);
+  pinMode(PINO_MOSFET_1, OUTPUT);
+  pinMode(PINO_MOSFET_2, OUTPUT);
+  pinMode(LED_STATUS_PIN, OUTPUT); 
+  digitalWrite(PINO_MOSFET_1, LOW);
+  digitalWrite(PINO_MOSFET_2, LOW);
+  digitalWrite(LED_STATUS_PIN, LOW); 
 
   // --- MENU INICIAL ---
   Serial.println(F("================================================="));
@@ -79,9 +85,9 @@ void setup() {
   // --- FIM DO MENU INICIAL ---
 
   // Sinal sonoro de inicialização
-  digitalWrite(pinoBuzzer, HIGH);
+  digitalWrite(PINO_BUZZER, HIGH);
   delay(300);
-  digitalWrite(pinoBuzzer, LOW);
+  digitalWrite(PINO_BUZZER, LOW);
   delay(300);
   Wire.begin(); // Inicia a comunicação I2C
 
@@ -102,24 +108,25 @@ void setup() {
   Serial.println(F("Iniciando fase de calibracao de altitude..."));
 
   // Sinal sonoro para indicar o início da calibração
-  digitalWrite(pinoBuzzer, HIGH);
+  digitalWrite(PINO_BUZZER, HIGH);
   delay(250);
-  digitalWrite(pinoBuzzer, LOW);
+  digitalWrite(PINO_BUZZER, LOW);
   delay(250);
 }
 
 
+// loop() função (camelCase)
 void loop() {
   // Variáveis de estado, declaradas como 'static' locais dentro de loop().
   // Elas são inicializadas apenas uma vez na primeira chamada de loop().
-  static bool acionamentoIniciado = false;
+  static bool acionamento_iniciado = false;
   static float apogeu = 0;
 
   static float leitura_inicial_fixa = 0;
   static bool calibracao_inicial_concluida = false;
 
-  static const int quantidade_leituras_media = 5; // Constante local estática
-  static float buffer_leituras[quantidade_leituras_media] = {0}; // Inicializa o array com zeros
+  static const int QUANTIDADE_LEITURAS_MEDIA = 5; // Constante local estática (SCREAMING_SNAKE_CASE)
+  static float buffer_leituras[QUANTIDADE_LEITURAS_MEDIA] = {0}; // Inicializa o array com zeros
   static int indice_buffer = 0;
   static int contagem_leituras_pre_calibracao = 0;
 
@@ -129,20 +136,32 @@ void loop() {
   static bool foguete_lancado = false; // Estado para saber se o foguete decolou
 
   // Realiza a leitura da altitude atual do sensor BMP280
-  float altitude_absoluta_atual = lerAltitudeBMP280();
+  float altitude_absoluta_atual = lerAltitudeBmp280(); // Renomeada
 
-  // Verifica se a leitura do sensor retornou um valor inválido (NaN) ou zero consecutivo
+  // TRATAMENTO DE LEITURAS ZERO: Se a leitura for 0.0, incrementa o contador e retorna imediatamente.
+  // Isso evita que leituras inválidas de 0.0 entrem no buffer ou afetem os cálculos.
+  if (altitude_absoluta_atual == 0.0) {
+    contador_leituras_zero++;
+    // Se 3 leituras zeradas consecutivas, algo está errado
+    if (contador_leituras_zero >= 3) {
+      finalizarMissao(F("TRES LEITURAS ZERADAS/NULAS CONSECUTIVAS"));
+    }
+    return; // Retorna para não processar a leitura inválida
+  } else {
+    contador_leituras_zero = 0; // Reseta o contador se a leitura for válida
+  }
+
+  // Verifica se a leitura do sensor retornou um valor inválido (NaN)
   if (isnan(altitude_absoluta_atual)) {
     finalizarMissao(F("ERRO DE LEITURA DO SENSOR (NaN)"));
   }
-  if (altitude_absoluta_atual == 0.0) {
-    contador_leituras_zero++;
-  } else {
-    contador_leituras_zero = 0;
-  }
-  if (contador_leituras_zero >= 3) { // Se 3 leituras zeradas consecutivas, algo está errado
-    finalizarMissao(F("TRES LEITURAS ZERADAS/NULAS CONSECUTIVAS"));
-  }
+
+  // LINHAS MOVIDAS: Adiciona a leitura atual ao buffer e avança o índice
+  // Estas linhas agora ocorrem uma única vez no início do loop,
+  // antes da lógica de calibração ou de voo.
+  buffer_leituras[indice_buffer] = altitude_absoluta_atual;
+  indice_buffer = (indice_buffer + 1) % QUANTIDADE_LEITURAS_MEDIA;
+
 
   // Lógica de calibração inicial da altitude (antes do lançamento)
   if (!calibracao_inicial_concluida) {
@@ -153,18 +172,17 @@ void loop() {
     Serial.print(altitude_absoluta_atual);
     Serial.println(F(" m"));
 
-    buffer_leituras[indice_buffer] = altitude_absoluta_atual;
-    indice_buffer = (indice_buffer + 1) % quantidade_leituras_media;
-    if (contagem_leituras_pre_calibracao < quantidade_leituras_media) {
+    // O buffer e indice já foram atualizados acima.
+    if (contagem_leituras_pre_calibracao < QUANTIDADE_LEITURAS_MEDIA) {
       contagem_leituras_pre_calibracao++;
     }
     // Quando tivermos leituras suficientes para a média, calculamos a altitude de referência
-    if (contagem_leituras_pre_calibracao == quantidade_leituras_media) {
+    if (contagem_leituras_pre_calibracao == QUANTIDADE_LEITURAS_MEDIA) {
       float soma_buffer_calibracao = 0;
-      for (int i = 0; i < quantidade_leituras_media; i++) {
+      for (int i = 0; i < QUANTIDADE_LEITURAS_MEDIA; i++) {
         soma_buffer_calibracao += buffer_leituras[i];
       }
-      leitura_inicial_fixa = soma_buffer_calibracao / quantidade_leituras_media;
+      leitura_inicial_fixa = soma_buffer_calibracao / QUANTIDADE_LEITURAS_MEDIA;
       calibracao_inicial_concluida = true;
       Serial.println(F("================================================="));
       Serial.print(F("Calibracao concluida. Altitude de referencia (zero): "));
@@ -177,16 +195,14 @@ void loop() {
   }
 
   // --- Lógica após a calibração e durante o voo ---
-  // Adiciona a leitura atual ao buffer da média móvel
-  buffer_leituras[indice_buffer] = altitude_absoluta_atual;
-  indice_buffer = (indice_buffer + 1) % quantidade_leituras_media;
+  // O buffer já foi atualizado no início do loop.
 
   // Calcula a média móvel das últimas leituras
   float soma_buffer = 0;
-  for (int i = 0; i < quantidade_leituras_media; i++) {
+  for (int i = 0; i < QUANTIDADE_LEITURAS_MEDIA; i++) {
     soma_buffer += buffer_leituras[i];
   }
-  float nova_media_continua = soma_buffer / quantidade_leituras_media;
+  float nova_media_continua = soma_buffer / QUANTIDADE_LEITURAS_MEDIA;
   // Calcula a altitude relativa em relação ao ponto de calibração (zero)
   float altitude_relativa_media_movel = nova_media_continua - leitura_inicial_fixa;
 
@@ -221,21 +237,24 @@ void loop() {
     }
 
     // Verifica a altitude para acionamento do paraquedas/carga com a nova lógica
-    verificaAltitude(altitude_relativa_media_movel, apogeu, acionamentoIniciado, foguete_lancado, finalizarMissao);
+    // NOTA: A lógica aqui permite o acionamento mesmo abaixo de ALTITUDE_DE_LANCAMENTO
+    // se as condições de apogeu baixo e descida forem atendidas, conforme sua análise.
+    verificaAltitude(altitude_relativa_media_movel, apogeu, acionamento_iniciado, foguete_lancado, finalizarMissao);
   }
 }
 
 /*
  ===================================================================
- FUNÇÃO ATUALIZADA PARA BMP280 (AGORA EM MODO FORÇADO)
+ lerAltitudeBmp280() função (camelCase)
  ===================================================================
  Função para ler altitude do BMP280.
  No modo forçado, precisamos solicitar uma nova medição.
  Acessa o objeto 'bmp' globalmente.
  */
-float lerAltitudeBMP280() {
+float lerAltitudeBmp280() {
   // O objeto 'bmp' é global, acessível diretamente aqui.
-  extern Adafruit_BMP280 bmp; // Declara que 'bmp' é uma variável global existente
+  // A declaração 'extern Adafruit_BMP280 bmp;' é redundante quando a variável
+  // está no próprio arquivo globalmente, mas não causa erro. Removida para clareza.
 
   if (!bmp.takeForcedMeasurement()) {
     // Se a medição falhar, podemos retornar 0.0, a lógica no loop principal
@@ -245,71 +264,73 @@ float lerAltitudeBMP280() {
 
   // Aciona o LED brevemente para indicar uma leitura bem-sucedida
   digitalWrite(LED_STATUS_PIN, HIGH); // Liga o LED
-  delay(1); // Mantém o LED ligado por 1 milissegundo (ou até menos com delayMicroseconds)
+  delay(1); // Mantém o LED piscando
   digitalWrite(LED_STATUS_PIN, LOW);  // Desliga o LED
 
   return bmp.readAltitude();
 }
 
 
-void finalizarMissao(const __FlashStringHelper *razao) {
+// finalizarMissao() função (camelCase)
+void finalizarMissao(const __FlashStringHelper *razao_missao) { // Variável renomeada para snake_case
   Serial.println(F(""));
   Serial.println(F("================================================="));
   Serial.print(F("FINALIZANDO MISSAO. MOTIVO: "));
-  Serial.println(razao);
+  Serial.println(razao_missao); // Usando a variável renomeada
   Serial.println(F("================================================="));
 
   // Aciona os MOSFETs se a missão não foi finalizada por erro de inicialização do sensor
-  if (razao != F("ERRO CRITICO NA INICIALIZACAO DO SENSOR")) {
+  if (razao_missao != F("ERRO CRITICO NA INICIALIZACAO DO SENSOR")) { // Usando a variável renomeada
     Serial.println(F("Acionando MOSFETs com PWM..."));
-    analogWrite(pinoMosfet1, 255);
-    analogWrite(pinoMosfet2, 255);
+    analogWrite(PINO_MOSFET_1, 255);
+    analogWrite(PINO_MOSFET_2, 255);
 
     delay(3000); // Delay intencional para manter os MOSFETs acionados por um tempo
 
     Serial.println(F("Desligando MOSFETs."));
-    analogWrite(pinoMosfet1, 0);
-    analogWrite(pinoMosfet2, 0);
+    analogWrite(PINO_MOSFET_1, 0);
+    analogWrite(PINO_MOSFET_2, 0);
   }
 
   // Loop infinito com buzzer e LED piscando para indicar o fim da missão e travar o programa
   while (true) {
-    digitalWrite(pinoBuzzer, HIGH);
+    digitalWrite(PINO_BUZZER, HIGH);
     digitalWrite(LED_STATUS_PIN, HIGH); // LED também pisca no final da missão
     delay(300); // Delay intencional para o ritmo do buzzer/LED
-    digitalWrite(pinoBuzzer, LOW);
+    digitalWrite(PINO_BUZZER, LOW);
     digitalWrite(LED_STATUS_PIN, LOW);  // LED também pisca no final da missão
     delay(300); // Delay intencional para o ritmo do buzzer/LED
   }
 }
 
-/**
- * Verifica a altitude para decidir o acionamento do paraquedas/carga.
- * Implementa duas lógicas de recuperação:
- * 1. Foguete voou acima de Xm (100m) e desceu Ym (10m).
- * 2. Foguete voou abaixo de Xm (100m) e desceu Ym (10m), após ter sido detectado o lançamento.
+/*
+  verificaAltitude() função (camelCase)
+  Verifica a altitude para decidir o acionamento do paraquedas/carga.
+  Implementa duas lógicas de recuperação:
+  1. Foguete voou acima de Xm (100m) e desceu Ym (10m).
+  2. Foguete voou abaixo de Xm (100m) e desceu Ym (10m), após ter sido detectado o lançamento.
  */
-void verificaAltitude(float altitude, float& apogeuRef, bool& acionamentoIniciadoRef, bool& fogueteLancadoRef, void (*finalizar)(const __FlashStringHelper *)) {
+void verificaAltitude(float altitude, float& apogeu_ref, bool& acionamento_iniciado_ref, bool& foguete_lancado_ref, void (*finalizar)(const __FlashStringHelper *)) {
   // A recuperação só deve ser acionada uma única vez
-  if (acionamentoIniciadoRef) {
+  if (acionamento_iniciado_ref) {
     return;
   }
 
-  // --- Lógica 1: Foguete voou alto e começou a descer ---
-  // Condição: Apogeu atingido foi maior que ALTITUDE_LIMITE_X (100m)
-  // E a altitude atual caiu pelo menos DESCIDA_MINIMA_Y (10m) abaixo do apogeu.
-  if (apogeuRef > ALTITUDE_LIMITE_X && altitude <= apogeuRef - DESCIDA_MINIMA_Y) {
-    acionamentoIniciadoRef = true; // Marca que o acionamento foi iniciado
+  /* --- Lógica 1: Foguete voou alto e começou a descer ---
+   Condição: Apogeu atingido foi maior que ALTITUDE_LIMITE_X (100m)
+   E a altitude atual caiu pelo menos DESCIDA_MINIMA_Y (10m) abaixo do apogeu.*/
+  if (apogeu_ref > ALTITUDE_LIMITE_X && altitude <= apogeu_ref - DESCIDA_MINIMA_Y) {
+    acionamento_iniciado_ref = true; // Marca que o acionamento foi iniciado
     finalizar(F("RECUPERACAO: APOGEU ALTO (>100m) E DESCIDA")); // Chama a função para finalizar a missão
     return; // Sai da função após o acionamento
   }
 
-  // --- Lógica 2: Foguete voou baixo (abaixo de ALTITUDE_LIMITE_X) e começou a descer ---
-  // Condição: Apogeu atingido foi menor ou igual a ALTITUDE_LIMITE_X (100m)
-  // E o foguete já foi detectado como lançado (para evitar acionamento no chão antes de voar)
-  // E a altitude atual caiu pelo menos DESCIDA_MINIMA_Y (10m) abaixo do apogeu.
-  if (apogeuRef <= ALTITUDE_LIMITE_X && fogueteLancadoRef && altitude <= apogeuRef - DESCIDA_MINIMA_Y) {
-    acionamentoIniciadoRef = true; // Marca que o acionamento foi iniciado
+  /* --- Lógica 2: Foguete voou baixo (abaixo de ALTITUDE_LIMITE_X) e começou a descer ---
+   Condição: Apogeu atingido foi menor ou igual a ALTITUDE_LIMITE_X (100m)
+   E o foguete já foi detectado como lançado (para evitar acionamento no chão antes de voar)
+   E a altitude atual caiu pelo menos DESCIDA_MINIMA_Y (10m) abaixo do apogeu.*/
+  if (apogeu_ref <= ALTITUDE_LIMITE_X && foguete_lancado_ref && altitude <= apogeu_ref - DESCIDA_MINIMA_Y) {
+    acionamento_iniciado_ref = true; // Marca que o acionamento foi iniciado
     finalizar(F("RECUPERACAO: APOGEU BAIXO (<100m) E DESCIDA")); // Chama a função para finalizar a missão
     return; // Sai da função após o acionamento
   }
