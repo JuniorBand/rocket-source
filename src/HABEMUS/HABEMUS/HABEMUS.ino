@@ -46,10 +46,10 @@ const uint8_t PINO_BUZZER = 12;
 const uint8_t PINO_MOSFET_1 = 11;
 const uint8_t PINO_MOSFET_2 = 10;
 const uint8_t PINO_CHIP = 9;
-#define BMP280_1_ADDRESS 0x76
-#define BMP280_2_ADDRESS 0x77
-#define MPU6050_1_ADDRESS 0x68
-#define MPU6050_2_ADDRESS 0x69
+#define BMP280_1_ADDRESS 0x76 // SDO do BMP280 1 está em LOW, então o endereço é 0x76. (Padrão)
+#define BMP280_2_ADDRESS 0x77 // SDO do BMP280 2 está em HIGH, então o endereço é 0x77.
+#define MPU6050_1_ADDRESS 0x68 // AD0 do MPU6050 1 está em LOW, então o endereço é 0x68. (Padrão)
+#define MPU6050_2_ADDRESS 0x69 // AD0 do MPU6050 2 está em HIGH, então o endereço é 0x69.
 #define META_APOGEU 100.0f // Meta de apogeu desejada em metros (ajustável).
 
 
@@ -203,7 +203,7 @@ void loop() {
       case SENSOR_FALHA_CONSECUTIVA_ZERADA:
         finalizarMissao(F("TRES LEITURAS ZERADAS CONSECUTIVAS")); // Loop infinito.
         break;
-      default: // Sensores (0.0f) e (NaN) ou (NaN) e (NaN)
+      default: // SENSOR_FALHA_ZERADO_AMBOS_OU_UM_NAN: Sensores (0.0f) e (NaN) ou (0.0) e (0.0)
         break;
     }
     return; // Se os sensores não estão medindo corretamente, não continua a execução do loop.
@@ -573,6 +573,7 @@ void verificarSensores(uint8_t ADDRESS_1, uint8_t ADDRESS_2, uint8_t ADDRESS_3, 
     finalizarMissao(F("FALHA SENSOR MPU2"));
   }
 
+  escanearI2C(); // Escaneia o barramento I2C para verificar se os sensores estão conectados.
   Serial.println(F("Sensores BMP e MPU inicializados e funcionando."));
 }
 
