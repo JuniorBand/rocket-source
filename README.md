@@ -7,14 +7,14 @@ O código foi dividido em arquivos, de acordo com sua implementação com ou sem
     HABEMUS/
     ├── src/
     │ └── HABEMUS/
-    │ ├── HABEMUS/ 
-    │ │ └── HABEMUS.ino -> Código Fonte (BT Low Energy + 2 sensores)
-    │ ├── HABEMUS_1_sensor/
-    │ │ └── HABEMUS_1_sensor.ino -> (BT Low Energy + só 1 sensor cada)
+    │ ├── HABEMUS_BLE/ 
+    │ │ └── HABEMUS_BLE.ino -> Código Fonte (BT Low Energy + 2 sensores)
     │ ├── HABEMUS_classic_bluetooth/
     │ │ └── HABEMUS_classic_bluetooth.ino -> (BT Classic + 2 sensores)
     │ └── HABEMUS_no_bluetooth/
     │ └── HABEMUS_no_bluetooth.ino -> (Sem BT + 2 sensores)
+    │ └── Teste_bluetooth_solo/
+    │ └── Teste_bluetooth_solo.ino -> (BT Low Energy)
     ├── .gitignore
     └── README.md
 

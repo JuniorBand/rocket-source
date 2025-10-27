@@ -3,14 +3,13 @@
 
 
 ## Estrutura do código
-
-
-
+Improvisado.
 
 ## Sensores utilizados
-
+- `BMP280`-> Barômetro/Altímetro -> (m)
 
 
 ## Bibliotecas externas
+
 
 ## Histórico de modificações do código
