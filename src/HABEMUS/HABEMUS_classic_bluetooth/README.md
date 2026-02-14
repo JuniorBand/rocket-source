@@ -11,8 +11,8 @@ Mesma lógica do HABEMUS BLE, mas aqui se utiliza o BT Classic, e não o Low Ene
 - `MPU6050` -> Acelerômetro/Giroscópio -> (m/s^2)/(rad/s)
 
 ## Bibliotecas externas
-- Adafruit_MPU6050 (https://github.com/adafruit/Adafruit_MPU6050)
-- Adafruit_BMP280_Library (https://github.com/adafruit/Adafruit_BMP280_Library/tree/master)
-- BluetoothSerial para o BT Classic e todas as libs para o BLE são do Espressif Systems, baixado no Board Manager da Arduino IDE (https://github.com/espressif/arduino-esp32/tree/ee021855a156847dfcf75a9aeb8d585213f09e42/libraries/BluetoothSerial)
+- [Adafruit_MPU6050](https://github.com/adafruit/Adafruit_MPU6050)
+- [Adafruit_BMP280_Library](https://github.com/adafruit/Adafruit_BMP280_Library/tree/master)
+- [BluetoothSerial](https://github.com/espressif/arduino-esp32/tree/ee021855a156847dfcf75a9aeb8d585213f09e42/libraries/BluetoothSeria) para o BT Classic  e todas as [libs para o BLE](https://github.com/espressif/arduino-esp32/tree/ee021855a156847dfcf75a9aeb8d585213f09e42/libraries/BLE) são do Espressif Systems.
 
 ## Histórico de modificações do código

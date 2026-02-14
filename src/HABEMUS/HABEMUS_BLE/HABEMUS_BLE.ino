@@ -100,6 +100,7 @@ void setup() {
 }
 
 void loop() {
+
   /* Variáveis para a calibração inicial e média móvel */
   static bool calibracao_concluida = false;
   
