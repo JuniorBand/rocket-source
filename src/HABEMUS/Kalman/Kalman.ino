@@ -121,7 +121,7 @@ private:
     void erroCritico(cstr_flash razao_erro) noexcept;
     inline float lerAltitudeBMP280() noexcept;
     inline void tocarPadraoBPM(u16 intervalo_ms) noexcept;
-    inline void tocarBeeps(u8 quantidade, u16 duracao_ms) noexcept; //melhorando o 
+    inline void tocarBeeps(u8 quantidade, u16 duracao_ms) noexcept; 
     bool varreduraI2C(byte *endereco_encontrado) noexcept;
     
     EstadoDoSistema estado_atual;
@@ -377,7 +377,7 @@ void ControladorDeVoo::configurar() {
     
     tocarBeeps(1, 300);
     Wire.begin(21, 22); // GPIO 21 como SDA (data) e GPIO 22 como SCL (clock)
-    Wire.setClock(I2C_CLOCK_FAST_MODE); // Pesquisar melhor
+    Wire.setClock(I2C_CLOCK_FAST_MODE);
 
     if (!EEPROM.begin(TAMANHO_EEPROM)) { // Reserva espaço na Flash
         erroCritico(F("Falha ao inicializar a EEPROM."));
@@ -586,7 +586,7 @@ void ControladorDeVoo::calibrarAltitude() noexcept {
     tocarBeeps(2, 200);
 }
 
-void ControladorDeVoo::acionarEjecao(const __FlashStringHelper *razao_missao, float altitude_acionamento) {
+void ControladorDeVoo::acionarEjecao(cstr_flash razao_missao, float altitude_acionamento) {
     if (estado_atual != EstadoDoSistema::EM_VOO) return;
     
     Serial.println(F("\n================================================="));
@@ -615,7 +615,7 @@ void ControladorDeVoo::registrarPouso() {
     Serial.println(F("================================================="));
 }
 
-void ControladorDeVoo::erroCritico(const __FlashStringHelper *razao_erro) noexcept {
+void ControladorDeVoo::erroCritico(cstr_flash razao_erro) noexcept {
     Serial.println(F("\n================================================="));
     Serial.printf(F("ERRO CRITICO! %s\nSISTEMA PARALISADO.\n"), razao_erro);
     Serial.println(F("================================================="));
