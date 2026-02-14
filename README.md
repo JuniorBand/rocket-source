@@ -1,29 +1,14 @@
-# rocket-source (Por enquanto, o código em desenvolvimento está na branch dev)
-//Descreva o foguete aqui (sintaxe do .md: [(https://encurtador.com.br/iRkUC)](https://encurtador.com.br/iRkUC))
+# rocket-source
+Este repositório contém o código-fonte dos foguetes.
+
+> [!NOTE] <details> <summary>Observações</summary>- O código é atualizado mais rapidamente na branch `dev`</details>
+
 
 ## Estrutura de Pastas
-O código foi dividido em arquivos, de acordo com sua implementação com ou sem Bluetooth (Low Energy ou Classic), se utiliza 1 ou 2 sensores para cada medida e etc:
+O código foi dividido de acordo com seu respectivo projeto:
 
-    HABEMUS/
-    ├── src/
-    │ └── HABEMUS/
-    │ ├── HABEMUS_BLE/ 
-    │ │ └── Functions.h -> Funções para o BLE
-    │ │ └── HABEMUS_BLE.ino -> Código Fonte (BT Low Energy + 2 sensores)
-    │ ├── HABEMUS_classic_bluetooth/
-    │ │ └── HABEMUS_classic_bluetooth.ino -> (BT Classic + 2 sensores)
-    │ └── HABEMUS_no_bluetooth/
-    │ │ └── HABEMUS_no_bluetooth.ino -> (Sem BT + 2 sensores)
-    │ └── Teste_BLE_solo/
-    │ │ └── BT.py -> Código para o PC (BT Low Energy)
-    │ │ └── Functions.h -> Funções para o BLE
-    │ │ └── Teste_BLE_solo.ino -> (BT Low Energy)
-    │ ├── CODIGO_HABEMUS_1_2/
-    │ │ └── CODIGO_HABEMUS_1_2.ino
-    │ ├── CODIGO_IMPROVISADO_PARA_TESTE_COM_DISPLAY_BMP180_HABEMUS_1_2/
-    │ │ └── CODIGO_IMPROVISADO_PARA_TESTE_COM_DISPLAY_BMP180_HABEMUS_1_2.ino
-    │ ├── Kalman/
-    │ │ └── Kalman.ino -> Código com filtro de Kalman Unscented
+    ├── MOISÉS/
+    ├── HABEMUS/ 
     ├── Random_Access_Codes/
     ├── .gitignore
     └── README.md
