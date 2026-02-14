@@ -32,4 +32,8 @@
 *.app
 
 # libs
-/libs
+libs/
+build/
+
+# Other files
+*.ini

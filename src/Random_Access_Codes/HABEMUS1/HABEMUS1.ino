@@ -58,6 +58,12 @@
 /* Definições de pinos */
 #define pinoBuzzer 11
 #define pinoRele 9
+#define printF(string_args) Serial.print(F(string_args))
+#define printFln(string_args) Serial.println(F(string_args))
+#define printData(data_args, ...) Serial.print(data_args, ##__VA_ARGS__)
+#define printDataln(data_args, ...) Serial.println(data_args, ##__VA_ARGS__)
+
+typedef uint8_t u8;
 
 /* Limites e configurações de voo */
 const float LIMITE_SALTO_ANOMALO = 75.0;
@@ -99,7 +105,7 @@ void setup() {
   digitalWrite(pinoBuzzer, HIGH); delay(250); digitalWrite(pinoBuzzer, LOW); delay(250);
   Wire.begin();
 
-  Serial.println(F("Tentando inicializar BMP280 no endereco 0x76..."));
+  printF("Tentando inicializar BMP280 no endereco 0x76...");
   if (!bmp.begin(0x76)) {
     Serial.println(F("================================================="));
     Serial.println(F("ERRO CRÍTICO: Nao foi possivel encontrar um sensor BMP280 valido no 0x76!"));
