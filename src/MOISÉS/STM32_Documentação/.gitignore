@@ -1,0 +1,37 @@
+# ==========================================
+# Ignorar arquivos temporários do LaTeX
+# ==========================================
+*.aux
+*.bbl
+*.bcf
+*.blg
+*.brf
+*.fdb_latexmk
+*.fls
+*.idx
+*.ilg
+*.ind
+*.lof
+*.log
+*.lot
+*.nav
+*.out
+*.snm
+*.toc
+*.vrb
+*.run.xml
+*.synctex.gz
+*.xdv
+
+# ==========================================
+# Ignorar pastas geradas por pacotes extras
+# ==========================================
+_minted*/
+%OUTDIR%/
+
+# ==========================================
+# PDF Final
+# ==========================================
+# Por padrão, versionar arquivos binários grandes como o PDF no Git não é uma boa prática.
+# Descomente a linha abaixo se você NÃO quiser enviar o PDF para o GitHub.
+# *.pdf
