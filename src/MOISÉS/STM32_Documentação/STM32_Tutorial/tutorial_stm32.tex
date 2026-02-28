@@ -1809,7 +1809,7 @@ Para dominar os Timers, você precisa entender apenas três registradores princi
 
 Para configurar um Timer que estoure exatamente a cada 1 segundo (1 Hz) ou 1 milissegundo (1000 Hz), usamos a seguinte fórmula:
 
-\[ f_{update} = \frac{f_{TIMx\_CLK}}{(PSC + 1) \times (ARR + 1)} \]
+$$f_{update} = \frac{f_{TIMx\_CLK}}{(PSC + 1) \times (ARR + 1)}$$
 
 O ``+1'' existe na fórmula porque os registradores começam a contar do 0 no hardware.
 
@@ -1820,7 +1820,7 @@ O ``+1'' existe na fórmula porque os registradores começam a contar do 0 no ha
     \item Escolhemos $ARR = 999$ (O contador vai até 999, completando 1000 ciclos).
 \end{itemize}
 
-\[ f_{update} = \frac{96.000.000}{(95999 + 1) \times (999 + 1)} = \frac{96.000.000}{96.000.000} = 1 \text{ Hz} \]
+$$f_{update} = \frac{96.000.000}{(95999 + 1) \times (999 + 1)} = \frac{96.000.000}{96.000.000} = 1 \text{ Hz}$$
 
 \vspace{0.3cm}
 \noindent\textbf{Comandos Básicos (HAL\_TIM)}\\
@@ -1843,7 +1843,8 @@ HAL_TIM_Base_Start_IT(&htim2);
 \noindent\textbf{O Callback (A ISR do Timer)}\\
 Lembra do ``E se não for GPIO?'' do capítulo de interrupções? Aqui está a resposta. Quando o Timer estoura, o NVIC para a CPU e pula para o \texttt{TIM2\_IRQHandler()}. Dentro dele, a HAL limpa a flag de estouro e chama um Callback específico de Timer, o \texttt{HAL\_TIM\_PeriodElapsedCallback}.
 
-Basta você criar essa função no seu \texttt{main.c}:
+Basta você criar essa função no seu \texttt{main.c} (recomendamos colocar na seção \texttt{USER CODE BEGIN 4} no final do arquivo, para o CubeMX não apagar acidentalmente):
+
 \begin{lstlisting}[language=C]
 /* Esta funcao e chamada automaticamente sempre que QUALQUER Timer estourar */
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
@@ -1857,9 +1858,82 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 }
 \end{lstlisting}
 
+\begin{quote}
+\textbf{Nota de Engenharia (O Caminho da Interrupção):} \\
+Como a CPU sabe que deve chamar o \texttt{HAL\_TIM\_PeriodElapsedCallback}? Ela não sabe! O processador ARM conhece apenas a tabela de vetores definida no arquivo de \textit{Startup} em Assembly. O nome gravado no silício para essa interrupção é \texttt{TIM2\_IRQHandler()}. 
+
+Quando você usa o CubeMX e a HAL, o caminho do código é uma escadinha:
+\begin{enumerate}
+    \item O hardware do Timer estoura e a CPU pula para a \texttt{TIM2\_IRQHandler()} (que o CubeMX escondeu no arquivo \texttt{stm32f4xx\_it.c}).
+    \item Lá dentro, o código chama o ``gerente'' da biblioteca: \texttt{HAL\_TIM\_\\IRQHandler(\&htim2)}.
+    \item Esse gerente descobre qual flag disparou, limpa o registrador \texttt{SR} para você e, finalmente, chama a nossa \texttt{HAL\_TIM\_PeriodElapsedCallback()}.
+\end{enumerate}
+
+No \textbf{Bare-Metal}, nós cortamos todos os intermediários. Nós escrevemos a \texttt{TIM2\_IRQHandler()} direto no nosso arquivo e fazemos o trabalho nós mesmos, economizando dezenas de ciclos de \textit{clock} da CPU que seriam gastos pulando de função em função!
+\end{quote}
+
 \textbf{Por que usar isso em vez do \texttt{HAL\_Delay()}?}\\
 Se você usa \texttt{HAL\_Delay(1000)} no \texttt{while(1)}, a sua CPU fica 100\% do tempo presa rodando em círculos, incapaz de ler botões ou receber dados da UART.
 Se você usa um Hardware Timer com Interrupção, o seu \texttt{while(1)} fica livre para processar telas, calcular dados e escutar sensores. A CPU só gasta 1 microssegundo do tempo dela a cada 1 segundo para ir lá piscar o LED e voltar. A ideia é a mesma do \texttt{millis()} vs \texttt{delay()} do Arduino.
+
+\subsubsection{A Inicialização da HAL para Timers (Dissecando o CubeMX)}
+
+O Timer é o verdadeiro ``coração'' de um sistema embarcado de tempo real. Diferente do \texttt{HAL\_Delay()}, que trava a CPU inteira, o Timer é um hardware independente que conta pulsos de relógio e avisa a CPU apenas quando o tempo exato passou.
+
+\textit{Nota de Engenharia: Usaremos o \textbf{TIM3} como exemplo neste bloco, mas essa exata mesma estrutura e matemática se aplicam aos outros Timers de propósito geral do STM32 (como o TIM2, TIM4 e TIM5).}
+
+O CubeMX gera a função \texttt{MX\_TIM3\_Init()}, que configura as engrenagens de contagem do hardware. Veja a anatomia do código e a matemática por trás dele:
+
+\begin{lstlisting}[language=C]
+/**
+  * @brief TIM3 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM3_Init(void)
+{
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  htim3.Instance = TIM3; /* 1. Qual hardware fisico vamos usar? (Ex: TIM3) */
+
+  /* 2. A Matematica do Tempo (A engrenagem do relogio) */
+  htim3.Init.Prescaler = 59;
+  htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim3.Init.Period = 999;
+  htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  
+  /* 3. A HAL escreve nos registradores (PSC, ARR, CR1) */
+  if (HAL_TIM_Base_Init(&htim3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  
+  /* Configuracoes de sincronizacao (Para Timers cascateados) */
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim3, &sClockSourceConfig) != HAL_OK) { Error_Handler(); }
+  
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim3, &sMasterConfig) != HAL_OK) { Error_Handler(); }
+}
+\end{lstlisting}
+
+\textbf{O que você precisa saber sobre os parâmetros (A Regra do ``+ 1''):}
+O silício dos microcontroladores começa a contar do zero. Portanto, a matemática dos Timers sempre soma 1 ao valor que você digita no CubeMX.
+
+\begin{itemize}
+    \item \textbf{\texttt{Prescaler} (PSC - A Redução de Marcha):} É o divisor do clock principal. Se o seu barramento (APB1) está rodando a 60 MHz (60.000.000 Hz) e você coloca um \texttt{Prescaler} de 59, o hardware divide o relógio por 60 (pois $59 + 1 = 60$). O resultado é que o seu Timer vai bater a exatos 1 MHz (1.000.000 Hz). Isso significa que cada ``passo'' do contador leva exato 1 microssegundo ($\mu s$).
+    
+    \item \textbf{\texttt{Period} (ARR - Auto-Reload Register):} É o limite da contagem. É aqui que o alarme toca. Se o nosso Timer está dando um passo a cada 1 microssegundo, e colocamos o \texttt{Period} em 999, o Timer contará de 0 até 999 (exatos 1000 passos). $1000 \times 1\mu s = 1000 \mu s$, ou seja, exatamente \textbf{1 milissegundo}. Ao atingir esse valor, ele zera sozinho e dispara a interrupção.
+    
+    \item \textbf{\texttt{CounterMode}:} Define a direção da contagem. O padrão \texttt{UP} conta de 0 até o limite do \texttt{Period}. O modo \texttt{DOWN} conta do \texttt{Period} até 0. Existem os modos \textit{Center-Aligned} que sobem e descem (como um triângulo), muito usados para gerar sinais PWM suaves para controle de motores.
+    
+    \item \textbf{\texttt{ClockDivision}:} O nome engana muito iniciante. Ele \textbf{não} divide o clock de contagem do Timer (quem faz isso é o Prescaler). Esse parâmetro serve para os circuitos de filtro digital dos pinos de entrada do Timer (usados para ler encoders ou sinais com ruído). Para um Timer de contagem básica, deixe sempre em \texttt{DIV1}.
+    
+    \item \textbf{\texttt{AutoReloadPreload}:} Lembra dos \hyperref[rtc:sombra]{``Registradores Sombra do RTC''}? É a mesma ideia. Se estiver em \texttt{ENABLE}, qualquer alteração que você fizer no \texttt{Period} durante a execução do código só terá efeito quando o Timer terminar a contagem atual e zerar. Se estiver em \texttt{DISABLE}, a mudança é imediata e pode corromper o ciclo atual se não for feita com cuidado.
+\end{itemize}
 
 \subsubsection{Timers direto nos Registradores (Bare Metal)}
 Esquecer a HAL para os Timers simplifica muito o código. Lembra da trindade dos registradores do Timer (CNT, PSC e ARR)? A configuração exige apenas setar os limites, habilitar o sinal de interrupção interno e ligar o contador. Aqui estão os outros registradores utilizados:
@@ -1989,6 +2063,48 @@ Exemplo: O barramento do seu timer roda a 84 MHz (84.000.000). Você quer contro
 Sabendo que o seu ARR vai de 0 a 19999 (um total de 20.000 ``passos''), se você quiser um Duty Cycle de 10\% (pino ligado por 10\% do tempo), basta configurar o CCR para 2000.
 
 \vspace{0.3cm}
+
+\vspace{0.3cm}
+\noindent\textbf{A Inicialização da HAL para PWM (Dissecando o CubeMX)}\\
+Assim como nos barramentos de comunicação, o CubeMX gera uma função de configuração, como a \texttt{MX\_TIM2\_Init()}. A diferença fundamental para um Timer básico é que, além da base de tempo, ele configura um \textit{Output Compare} (OC) para o canal específico.
+
+\begin{lstlisting}[language=C]
+static void MX_TIM2_Init(void)
+{
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+  TIM_OC_InitTypeDef sConfigOC = {0}; /* Struct exclusiva dos Canais (CCR) */
+
+  /* 1. Base de Tempo (Frequencia) */
+  htim2.Instance = TIM2;
+  htim2.Init.Prescaler = 83;
+  htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim2.Init.Period = 19999;
+  htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim2) != HAL_OK) { Error_Handler(); }
+
+  /* ... config de clocks ... */
+
+  /* 2. Inicializacao do gerador de PWM */
+  if (HAL_TIM_PWM_Init(&htim2) != HAL_OK) { Error_Handler(); }
+
+  /* 3. Configuracao especifica do Canal 1 (Duty Cycle) */
+  sConfigOC.OCMode = TIM_OCMODE_PWM1;
+  sConfigOC.Pulse = 1500;  /* A Pegadinha: Aqui vai o valor do CCR inicial! */
+  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+  
+  /* Conecta a configuracao OC ao Canal 1 do TIM2 */
+  if (HAL_TIM_PWM_ConfigChannel(&htim2, &sConfigOC, TIM_CHANNEL_1) != HAL_OK) 
+  { 
+    Error_Handler(); 
+  }
+}
+\end{lstlisting}
+
+\textbf{A Pegadinha do Parâmetro \texttt{Pulse}:} No CubeMX, você não encontra a palavra ``CCR''. O valor do Duty Cycle inicial é configurado no campo chamado \textbf{Pulse}. Lembre-se que este valor \textbf{não} é uma porcentagem, mas sim um número absoluto que deve ser menor ou igual ao seu \texttt{Period} (ARR).\\
+
 \noindent\textbf{Com HAL (A Função e a Macro)}\\
 No CubeMX, você configura o Timer escolhendo o \textit{Clock Source} como \textit{Internal Clock} e no \textit{Channel 1} você seleciona \textit{PWM Generation CH1}.
 
@@ -2230,6 +2346,45 @@ Antes de ver o código, você precisa entender como o hardware lê a tensão. De
 Quando você manda o ADC ler um pino, ele fecha a chave e liga o pino a esse capacitor interno. O capacitor precisa de um tempo mínimo (medido em ciclos de clock) para se carregar até atingir a exata mesma tensão do mundo externo. Isso se chama \textit{Sampling Time} (Tempo de Amostragem).
 
 \textbf{Aviso de Hardware:} Um erro clássico é configurar o ADC com um \textit{Sampling Time} muito rápido (ex: 3 ciclos). Se o seu sensor externo tiver uma impedância alta (resistência), o capacitor não terá tempo de carregar completamente, e a sua leitura no software será um valor menor do que a tensão real, flutuando aleatoriamente. Se não precisa de velocidade extrema, sempre configure o \textit{Sampling Time} para valores mais altos (ex: 84 ciclos ou 480 ciclos).
+
+\vspace{0.3cm}
+\subsubsection{A Inicialização da HAL para ADC (Dissecando o CubeMX)}
+A função \texttt{MX\_ADC1\_Init()} gerada pelo CubeMX esconde as configurações mais críticas para a precisão da sua leitura analógica.
+
+\begin{lstlisting}[language=C]
+static void MX_ADC1_Init(void)
+{
+  ADC_ChannelConfTypeDef sConfig = {0};
+
+  /* 1. Configuracao Global do Motor ADC */
+  hadc1.Instance = ADC1;
+  hadc1.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV4;
+  hadc1.Init.Resolution = ADC_RESOLUTION_12B;
+  hadc1.Init.ScanConvMode = DISABLE;
+  hadc1.Init.ContinuousConvMode = DISABLE; /* Trava de seguranca */
+  hadc1.Init.DiscontinuousConvMode = DISABLE;
+  hadc1.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
+  hadc1.Init.ExternalTrigConv = ADC_SOFTWARE_START;
+  hadc1.Init.DataAlign = ADC_DATAALIGN_RIGHT;
+  hadc1.Init.NbrOfConversion = 1;
+  hadc1.Init.DMAContinuousRequests = DISABLE;
+  hadc1.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
+  if (HAL_ADC_Init(&hadc1) != HAL_OK) { Error_Handler(); }
+
+  /* 2. Configuracao do Canal Especifico (Amostragem) */
+  sConfig.Channel = ADC_CHANNEL_0;
+  sConfig.Rank = 1; /* Posicao na fila de leitura (SQR3) */
+  sConfig.SamplingTime = ADC_SAMPLETIME_84CYCLES; /* O tempo para o capacitor carregar */
+  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK) { Error_Handler(); }
+}
+\end{lstlisting}
+
+\textbf{O que você precisa conferir na geração de código:}
+\begin{itemize}
+    \item \textbf{\texttt{ContinuousConvMode}:} Se estiver \texttt{ENABLE}, o ADC lerá o pino em \textit{loop} infinito assim que você der o start. O padrão é \texttt{DISABLE} para que você tenha controle no \texttt{while(1)}.
+    \item \textbf{\texttt{SamplingTime}:} É aqui que o CubeMX define o tempo de carga do capacitor interno. Se estiver lendo sensores com alta resistência elétrica, altere no CubeMX para \texttt{84CYCLES} ou mais, garantindo que o valor estabilize.
+    \item \textbf{\texttt{Rank}:} É a posição deste canal na fila de conversão. Corresponde à configuração do registrador \texttt{SQR3} que vimos na seção de Bare-Metal.
+\end{itemize}
 
 \subsubsection{ADC com HAL (O Método Polling)}
 A biblioteca HAL simplifica bastante o processo, escondendo o acionamento dos clocks internos e calibrações. O método mais simples (porém bloqueante) é o Polling.
@@ -3641,6 +3796,50 @@ Diferente da UART, a configuração do USB no CubeMX é dividida em duas partes:
     \item \textbf{O Software (Middleware):} Na aba \textit{Middleware}, ativamos o \texttt{USB\_DEVICE} e selecionamos a classe \textit{Communication Device Class (Virtual Port Com)}.
 \end{enumerate}
 
+\vspace{0.3cm}
+
+\subsection{A Inicialização do USB (Dissecando o Middleware)}
+Diferente do Timer ou do ADC, o USB é um protocolo incrivelmente complexo. O CubeMX não gera apenas configurações de hardware, mas importa uma biblioteca inteira da ST (o \textit{Middleware} USB Device Library). 
+
+A função \texttt{MX\_USB\_DEVICE\_Init()} não mexe em registradores diretamente; ela monta a arquitetura de software para o computador reconhecer a sua placa. Veja os quatro pilares dessa inicialização:
+
+\begin{lstlisting}[language=C]
+void MX_USB_DEVICE_Init(void)
+{
+  /* 1. Inicializa o Nucleo do USB e os Descritores */
+  /* FS_Desc e o "RG" da placa (Vendor ID, Product ID), dizendo ao PC o que somos */
+  if (USBD_Init(&hUsbDeviceFS, &FS_Desc, DEVICE_FS) != USBD_OK)
+  {
+    Error_Handler();
+  }
+  
+  /* 2. Registra a Classe do Dispositivo */
+  /* Avisa a biblioteca que vamos agir como uma Porta Serial Virtual (CDC) */
+  if (USBD_RegisterClass(&hUsbDeviceFS, &USBD_CDC) != USBD_OK)
+  {
+    Error_Handler();
+  }
+  
+  /* 3. A Ponte com o seu Codigo (Interface) */
+  /* Conecta o motor do USB as funcoes CDC_Receive_FS e CDC_Transmit_FS 
+     que moram la no arquivo usbd_cdc_if.c */
+  if (USBD_CDC_RegisterInterface(&hUsbDeviceFS, &USBD_Interface_fops_FS) != USBD_OK)
+  {
+    Error_Handler();
+  }
+  
+  /* 4. Liga a Chave Geral */
+  /* Habilita o hardware, liga os resistores de pull-up do pino D+ 
+     e avisa ao computador: "Estou vivo, pode iniciar a enumeracao!" */
+  if (USBD_Start(&hUsbDeviceFS) != USBD_OK)
+  {
+    Error_Handler();
+  }
+}
+\end{lstlisting}
+
+\textbf{Onde mora o perigo?} Se você precisar que o USB comece a funcionar apenas depois que um botão for apertado, você pode tirar essa função do \texttt{main()} e chamá-la depois. Porém, o passo 3 (\texttt{USBD\_CDC\_RegisterInterface}) é o mais vital para nós: é ele quem garante que, quando o PC mandar um dado, o código pule para o seu \texttt{usbd\_cdc\_if.c} em vez de se perder no limbo da memória.
+
 \subsubsection{Enviando e Recebendo Dados (O Padrão Eco)}
 Aqui está a maior quebra de paradigma: você \textbf{não} usa funções padrão da HAL no seu \texttt{main.c} (como um \texttt{HAL\_USB\_Receive}). O CubeMX cria uma pasta inteira chamada \texttt{USB\_Device}, e o arquivo mais importante para nós lá dentro é o \texttt{usbd\_cdc\_if.c} (A Interface do CDC).
 
@@ -3766,6 +3965,42 @@ Ativar o DMA é surpreendentemente simples no CubeMX. A grande sacada é que voc
     \item \textbf{Mode:} Escolha \textbf{Normal} (faz a transferência uma vez e para) ou \textbf{Circular} (quando o vetor da RAM enche, o DMA volta para o índice zero automaticamente -- perfeito para \textit{buffers} contínuos de sensores).
     \item \textbf{Data Width:} Geralmente \textbf{Byte} (8 bits) para UART e SPI, e \textbf{Half Word} (16 bits) para leituras do ADC.
 \end{enumerate}
+
+\vspace{0.3cm}
+\subsection{A Inicialização da HAL para DMA (A Regra de Ouro da Ordem)}
+Se você olhar a função \texttt{MX\_DMA\_Init()} gerada pelo CubeMX, vai achar que ela é inútil. Ela parece não configurar quase nada! 
+
+\begin{lstlisting}[language=C]
+static void MX_DMA_Init(void)
+{
+  /* 1. Liga o Clock dos controladores DMA na placa mae (AHB) */
+  __HAL_RCC_DMA2_CLK_ENABLE();
+  __HAL_RCC_DMA1_CLK_ENABLE();
+
+  /* 2. Liga as Interrupcoes no NVIC para os fluxos que estamos usando */
+  /* Exemplo: DMA do ADC (Stream 0) e DMA da UART (Stream 5) */
+  HAL_NVIC_SetPriority(DMA2_Stream0_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA2_Stream0_IRQn);
+  
+  HAL_NVIC_SetPriority(DMA1_Stream5_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Stream5_IRQn);
+}
+\end{lstlisting}
+
+\textbf{Cadê a configuração de verdade?}\\
+O CubeMX esconde a configuração pesada do DMA (os ponteiros de memória, modo circular, tamanho dos dados) dentro do arquivo \texttt{stm32f4xx\_hal\_msp.c}, especificamente na função \texttt{HAL\_ADC\_MspInit} (se for o DMA do ADC) ou \texttt{HAL\_UART\_MspInit} (se for da UART). A lógica da ST é: o DMA é um ``escravo'' do periférico, então ele é configurado junto com o mestre dele.
+
+\textbf{A Pegadinha Mortal (A Ordem no \texttt{main.c}):}\\
+Como o silício precisa que a energia do DMA esteja ligada \textbf{antes} de tentar configurar os registradores dele, olhe atentamente para a ordem das funções no seu \texttt{main()}:
+
+\begin{lstlisting}[language=C]
+  /* Ordem CORRETA gerada pelo CubeMX */
+  MX_DMA_Init();   /* <- 1o: Liga o Clock do DMA */
+  MX_ADC1_Init();  /* <- 2o: Configura o ADC e amarra o DMA nele */
+  MX_USART2_UART_Init();
+\end{lstlisting}
+
+Se você, por preciosismo de programador, tentar organizar o código em ordem alfabética e colocar o \texttt{MX\_ADC1\_Init()} \textbf{antes} do \texttt{MX\_DMA\_Init()}, o seu código vai compilar perfeitamente, não dará nenhum erro, mas \textbf{o DMA nunca vai funcionar}. O microcontrolador tentará escrever a configuração do DMA com o motor de energia dele desligado, ignorando os comandos silenciosamente. O DMA \textbf{sempre} deve ser o primeiro periférico inicializado no \texttt{main}!
 
 \subsection{O Código com HAL}
 A mudança no seu \texttt{main.c} é mínima. Em vez de usar as funções que terminam em \texttt{\_IT} (Interrupção) ou em \textit{polling}, usamos a terminação \texttt{\_DMA}:
@@ -5230,6 +5465,7 @@ static void MX_RTC_Init(void)
 \end{lstlisting}
 
 \textbf{Passo 3: A Leitura no \texttt{while(1)} (Regra de Ouro)}
+\label{rtc:sombra}
 O hardware do RTC usa ``Registradores Sombra'' (\textit{Shadow Registers}). Quando você lê a Hora, o hardware congela a Data nos bastidores para garantir que você não leia a data errada caso o dia vire no exato milissegundo da leitura.
 Por isso, você é \textbf{obrigado a ler a Data logo após a Hora}, mesmo que não vá usá-la. Se ler só a Hora, o hardware trava os registradores esperando você ler a Data, e o seu relógio ``congela'' na tela.
 
