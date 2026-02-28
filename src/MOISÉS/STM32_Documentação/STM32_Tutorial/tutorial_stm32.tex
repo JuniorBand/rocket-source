@@ -299,6 +299,7 @@ typedef struct {
 % ==========================================
 % SEÇÃO 2: PRÁTICA E IMPLEMENTAÇÕES
 % ==========================================
+\newpage
 \section{Prática e Implementações}
 
 \subsection{Escovando bits}
@@ -379,6 +380,7 @@ while((ADC1->CR & ADC_CR_ADCAL) != 0){} // Caso não tenha concluído, permaneç
 % ==========================================
 % GPIO
 % ==========================================
+\newpage
 \subsection{GPIO (General-Purpose Input/Output)}
 
 \textit{\texttt{OBS}: Antes de ver mais sobre a lib do HAL em si ou do CMSIS, é mais simples iniciar com conceitos mais conhecidos, como o GPIO.
@@ -912,6 +914,7 @@ Uff, punk, acabou, então, a parte de GPIO. Mas se você conseguiu entender até
 % ==========================================
 % INTERRUPTS
 % ==========================================
+\newpage
 \subsection{Interrupts}
 
 \begin{figure}[H]
@@ -1277,6 +1280,7 @@ A lógica de prioridade (NVIC) e de limpar a Flag no Handler continua exatamente
 % ==========================================
 % HAL FUNCTIONS
 % ==========================================
+\newpage
 \subsection{HAL Functions}
 
 \begin{figure}[H]
@@ -1559,6 +1563,7 @@ Veremos como funcionam essas funções melhor na próxima sessão.
 % ==========================================
 % THE CLOCK & TIMERS
 % ==========================================
+\newpage
 \subsection{The Clock \& Timers}
 
 \begin{figure}[H]
@@ -2191,6 +2196,7 @@ Tendo compreendido o que foi passado nessa parte de Clock, a configuração deix
 % ==========================================
 % ADC (Analog-to-Digital Converter)
 % ==========================================
+\newpage
 \subsection{ADC (Analog-to-Digital Converter)}
 
 Enquanto o PWM resolve o problema de criar uma saída ``analógica'' a partir de pinos digitais, o ADC (Conversor Analógico-Digital) faz o caminho inverso: ele permite que o microcontrolador ``leia'' tensões contínuas do mundo real.
@@ -2551,6 +2557,7 @@ Os registradores do DMA são esses:
 % ==========================================
 % UART (Universal Asynchronous Receiver/Transmitter)
 % ==========================================
+\newpage
 \subsection{UART (Universal Asynchronous Receiver/Transmitter)}
 
 \begin{figure}[H]
@@ -2589,6 +2596,62 @@ Como não há clock contínuo para avisar quando um dado começa ou termina, a U
 \vspace{0.3cm}
 \noindent\textbf{O Baud Rate:}\\
 É a velocidade da conversa, medida em bits por segundo (bps). O valor mais clássico do mercado é 115200 bps. Se o seu STM32 enviar dados a 115200, mas o terminal do seu PC estiver configurado para 9600, você verá apenas caracteres estranhos (lixo) na tela, pois o PC estará ``lendo'' os bits no momento errado.
+
+\subsubsection{A Inicialização da HAL para UART (Dissecando o CubeMX)}
+O periférico da UART nasce ``em branco''. Antes de enviarmos qualquer \texttt{printf} ou escutarmos um sensor GPS, o CubeMX preenche a estrutura \texttt{huart2} e configura o hardware através da função \texttt{MX\_USART2\_UART\_Init()}.
+
+Veja a anatomia do código gerado e o significado físico de cada linha:
+
+\begin{lstlisting}[language=C]
+/**
+  * @brief USART2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART2_UART_Init(void)
+{
+  /* huart2 e uma variavel global do tipo UART_HandleTypeDef */
+
+  huart2.Instance = USART2; /* 1. Qual hardware fisico vamos usar? */
+  
+  /* 2. Preenchendo os parametros da comunicacao (O "Acordo") */
+  huart2.Init.BaudRate = 115200;
+  huart2.Init.WordLength = UART_WORDLENGTH_8B;
+  huart2.Init.StopBits = UART_STOPBITS_1;
+  huart2.Init.Parity = UART_PARITY_NONE;
+  huart2.Init.Mode = UART_MODE_TX_RX;
+  huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart2.Init.OverSampling = UART_OVERSAMPLING_16;
+  
+  /* 3. A HAL pega a struct e escreve nos registradores (CR1, CR2, CR3 e BRR) */
+  if (HAL_UART_Init(&huart2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+}
+\end{lstlisting}
+
+\textbf{O que você precisa saber sobre esses parâmetros:}
+\begin{itemize}
+    \item \textbf{\texttt{BaudRate}:} A velocidade da conversa em bits por segundo. Diferente do SPI (que divide o clock fixamente por 2, 4, 8...), a UART possui um registrador fracionário (\texttt{BRR}). Você simplesmente digita \texttt{115200} (ou \texttt{9600}) e a HAL faz aquela matemática complexa de Mantissa e Fração por baixo dos panos para acertar o relógio do hardware.
+    
+    \item \textbf{\texttt{WordLength}:} O tamanho do ``pacote'' de dados. Quase 100\% do mundo embarcado usa \texttt{8B} (8 bits, exatos 1 Byte por caractere). Se você ligar o bit de Paridade, alguns sistemas exigem que você mude isso para 9 bits (8 de dados + 1 de paridade), mas o padrão é 8.
+    
+    \item \textbf{\texttt{StopBits}:} O tempo de respiro. \texttt{STOPBITS\_1} significa que, ao fim de cada byte enviado, o pino TX vai ficar em ALTO (3.3V) pelo tempo de 1 bit para avisar o receptor: ``O pacote acabou, prepare-se para o próximo''.
+    
+    \item \textbf{\texttt{Parity} (A Matemática da Paridade):} É um mecanismo de detecção de erros. O hardware adiciona 1 bit extra ao seu dado para garantir que a quantidade total de bits ``1'' transmitidos seja sempre um número Par (\textit{Even}) ou Ímpar (\textit{Odd}).
+    \begin{itemize}
+        \item \textbf{Exemplo Prático:} Imagine enviar a letra 'A', que em binário é \texttt{0100 0001}. Note que temos apenas dois bits ``1'' (uma quantidade par).
+        \item Se você configurar para \textbf{Paridade Par (\texttt{UART\_PARITY\_EVEN})}: O hardware envia o seu dado e anexa um bit \texttt{0} no final. O total de ``uns'' continua sendo 2 (Par).
+        \item Se você configurar para \textbf{Paridade Ímpar (\texttt{UART\_PARITY\_ODD})}: O hardware anexa um bit \texttt{1} no final. O total de ``uns'' na mensagem toda vira 3 (Ímpar).
+    \end{itemize}
+    \textit{Como isso detecta erro?} Se o receptor estiver esperando receber uma mensagem ``Par'' e, por causa de um ruído no cabo, um dos zeros virar um, a contagem de ``uns'' vai dar ímpar. O hardware percebe na hora, descarta a mensagem e levanta uma flag de erro. Para conexões curtas na bancada (como cabo USB), a chance de erro é tão baixa que costumamos deixar em \texttt{NONE} (Desligado) para economizar processamento.    
+    \item \textbf{\texttt{Mode}:} Define o que o pino vai fazer. \texttt{TX\_RX} liga tanto o pino de transmissão (falar) quanto o de recepção (ouvir). Se você estiver controlando um display LCD simples que não responde nada, poderia usar só \texttt{TX} para economizar energia e liberar um pino.
+    
+    \item \textbf{\texttt{HwFlowCtl} (Controle de Fluxo):} Usa pinos extras (CTS e RTS) para os chips avisarem um ao outro quando estão ``ocupados'' e não podem receber dados. Extremamente comum em módulos Bluetooth antigos e modems GSM, mas para comunicação com PC e a maioria dos sensores, mantemos em \texttt{NONE}.
+    
+    \item \textbf{\texttt{OverSampling}:} Lembra da \hyperref[oversampling]{``técnica de votação''}? O \texttt{OVERSAMPLING\_16} diz ao receptor para bater no pino RX 16 vezes durante a duração de um único bit e pegar as amostras do meio para driblar ruídos. O STM32 permite baixar isso para 8x (\texttt{OVERSAMPLING\_8}) se você precisar atingir Baud Rates absurdamente altos (como 4 ou 5 Mbps), sacrificando um pouco da resistência a ruídos.
+\end{itemize}
 
 \subsubsection{Com HAL (Polling vs. Interrupt)}
 A inicialização da UART pelo CubeMX gera uma função \texttt{MX\_USART2\_UART\_Init()} (assumindo a USART2, muito comum por estar ligada internamente ao cabo USB nas placas Nucleo e Black Pill). Essa função configura a struct \texttt{UART\_HandleTypeDef}, definindo o Baud Rate, Word Length (8 bits) e Stop Bits (1).
@@ -2806,6 +2869,7 @@ Na comunicação serial assíncrona, você quase nunca sabe quantos caracteres o
 Se o usuário digitar ``Oi'', o seu microcontrolador vai ficar esperando eternamente pelas outras 8 letras e nunca vai processar a mensagem. Lendo de 1 em 1, você consegue analisar cada letra que chega (por exemplo, checar se a letra é um \texttt{\textbackslash n} ou \texttt{\textbackslash r}, que indicam que o usuário apertou ``Enter'' e a mensagem acabou).
 
 \subsubsection{A Matemática: Por que dividir por 16? (Oversampling)}
+\label{oversampling}
 Na fórmula do Baud Rate, o Clock é dividido por $16 \times BaudRate$. Esse 16 mágico vem de uma técnica de hardware chamada \textit{Oversampling} (Superamostragem).
 
 
@@ -2831,6 +2895,7 @@ Cada um deles recebe um ``Handle'' (uma struct de controle da HAL): \texttt{huar
 % ==========================================
 % I2C Functions (Inter-Integrated Circuit)
 % ==========================================
+\newpage
 \subsection{I2C Functions (Inter-Integrated Circuit)}
 
 \begin{figure}[H]
@@ -2891,6 +2956,66 @@ A anatomia de uma conversa I2C é assim:
     \item \textbf{Dados:} Os bytes de dados começam a fluir pelo SDA no ritmo do SCL.
     \item \textbf{Stop Condition:} O Mestre solta a linha SDA enquanto SCL está alto, encerrando o pacote.
 \end{enumerate}
+
+\subsubsection{A Inicialização da HAL para I2C (Dissecando o CubeMX)}
+O I2C é famoso por ser um barramento ``cheio de regras''. Como ele usa apenas dois fios (SDA e SCL) para conectar dezenas de dispositivos, a inicialização precisa definir muito bem quem manda, quem obedece, e a velocidade exata da conversa.
+
+
+
+Aqui está a estrutura de inicialização gerada pelo CubeMX. Repare em como a HAL abstrai a complexidade do hardware:
+
+\begin{lstlisting}[language=C]
+/**
+  * @brief I2C1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_I2C1_Init(void)
+{
+  /* hi2c1 e uma variavel global do tipo I2C_HandleTypeDef */
+
+  hi2c1.Instance = I2C1; /* 1. Qual hardware fisico vamos usar? */
+
+  /* 2. Preenchendo os parametros de configuracao */
+  hi2c1.Init.ClockSpeed = 100000;
+  hi2c1.Init.DutyCycle = I2C_DUTYCYCLE_2;
+  hi2c1.Init.OwnAddress1 = 0;
+  hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
+  hi2c1.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
+  hi2c1.Init.OwnAddress2 = 0;
+  hi2c1.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
+  hi2c1.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
+
+  /* 3. A HAL escreve nos registradores (CR1, CR2, OAR1, CCR, TRISE) */
+  if (HAL_I2C_Init(&hi2c1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+}
+\end{lstlisting}
+
+\textbf{O que você precisa saber sobre esses parâmetros:}
+\begin{itemize}
+    \item \textbf{\texttt{ClockSpeed} e o assustador \texttt{Timing}:} 
+    Nesta família, definimos a velocidade diretamente em Hertz (ex: \texttt{100000} para \textit{Standard Mode} a 100 kHz, ou \texttt{400000} para \textit{Fast Mode} a 400 kHz). 
+    \textit{Mas e o \texttt{Timing}?} Em chips mais recentes da ST, o hardware do I2C foi atualizado e exige um valor hexadecimal bizarro no lugar da velocidade (tipo \texttt{0x20404768}). Esse número é um ``pacotão'' que contém os tempos exatos (em nanossegundos) de quanto tempo o sinal leva para subir (\textit{Rise Time}), descer (\textit{Fall Time}) e ficar em nível alto/baixo. É tão complexo calcular isso na mão que o próprio CubeMX tem uma ferramenta dedicada só para gerar esse Hex!
+    
+    \item \textbf{\texttt{DutyCycle}:} Relevante apenas no \textit{Fast Mode} (400 kHz). Define a proporção de tempo que o pulso de relógio (SCL) fica em nível Baixo x Alto. O padrão \texttt{I2C\_DUTYCYCLE\_2} significa uma proporção 2:1 (fica o dobro do tempo em 0V do que em 3.3V).
+    
+    \item \textbf{\texttt{OwnAddress1} e \texttt{OwnAddress2}:} 
+    ``Quem sou eu na fila do pão?''. Se o seu STM32 fosse agir como um \textbf{Escravo} (para outro microcontrolador ler dados dele), você colocaria o endereço dele aqui (ex: \texttt{0x5A}). Como quase sempre usamos o STM32 como \textbf{Mestre} lendo sensores, deixamos em \texttt{0}. O modo \textit{Dual Address} permite que o STM32 atenda por dois endereços diferentes ao mesmo tempo na mesma rede!
+    
+    \item \textbf{\texttt{AddressingMode}:} O tamanho do ``nome'' dos escravos. 99\% dos sensores do mercado (acelerômetros, barômetros, displays) usam endereços de \textbf{7 bits} (permitindo até 128 dispositivos no mesmo fio). Endereços de \textbf{10 bits} existem, mas são raríssimos.
+    
+    
+    \item \textbf{\texttt{GeneralCallMode} (O Grito de Guerra):} 
+    O endereço \texttt{0x00} no I2C é reservado para ``Broadcast'' (Mensagem para todos). Se você ativar isso, o STM32 vai escutar ordens enviadas para o endereço \texttt{0x00} e processá-las simultaneamente com os outros chips da placa. Geralmente deixamos em \texttt{DISABLE}.
+    
+    \item \textbf{\texttt{NoStretchMode} (Clock Stretching):} 
+    O ``Pera aí, tô pensando''. Cuidado com a pegadinha da ST: \texttt{DISABLE} significa que o Stretching está \textbf{Ativado}. Se o STM32 for o Mestre e estiver lendo um sensor muito lento, o sensor tem o direito de segurar a linha do relógio (SCL) no Terra (0V) temporariamente. Isso avisa o Mestre para pausar a comunicação enquanto o sensor prepara o próximo byte. Deixar em \texttt{DISABLE} garante que a comunicação não atropele um escravo lento.
+    
+    
+\end{itemize}
 
 \subsubsection{I2C com HAL (A Função de Ouro)}
 A HAL esconde toda a complexidade de gerar os sinais de Start, ACK e Stop.
@@ -3140,6 +3265,7 @@ HAL_I2C_Mem_Read(&hi2c1, (0x77 << 1), 0xF6, I2C_MEMADD_SIZE_8BIT, temperatura_br
 % ==========================================
 % SPI (Serial Peripheral Interface)
 % ==========================================
+\newpage
 \subsection{SPI (Serial Peripheral Interface)}
 
 \begin{figure}[H]
@@ -3188,6 +3314,67 @@ Cada escravo no barramento precisa ter um pino CS exclusivo ligado a um pino GPI
 \begin{itemize}
     \item Enquanto o pino CS estiver em ALTO (3.3V), o escravo ignora o relógio, ignora o MOSI e deixa o seu próprio pino MISO em alta impedância (desconectado) para não atrapalhar os outros.
     \item Quando o Mestre puxa o CS de um escravo para BAIXO (0V), esse escravo ``acorda'' e passa a conversar no barramento.
+\end{itemize}
+
+\subsubsection{A Inicialização da HAL (Dissecando o CubeMX)}
+Antes de enviar qualquer dado, o periférico precisa ser moldado de acordo com o datasheet do sensor alvo. O CubeMX automatiza a configuração dos registradores criando uma função \texttt{MX\_SPI1\_Init()}, que preenche uma estrutura de dados (\texttt{hspi1}) e a envia para o hardware.
+
+Aqui está a anatomia real do código gerado e o que cada linha significa fisicamente:
+
+\begin{lstlisting}[language=C]
+/**
+  * @brief SPI1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_SPI1_Init(void)
+{
+  /* hspi1 e uma variavel global do tipo SPI_HandleTypeDef */
+  
+  hspi1.Instance = SPI1; /* 1. Qual hardware fisico vamos usar? */
+  
+  /* 2. Preenchendo os parametros de configuracao */
+  hspi1.Init.Mode = SPI_MODE_MASTER;
+  hspi1.Init.Direction = SPI_DIRECTION_2LINES;
+  hspi1.Init.DataSize = SPI_DATASIZE_8BIT;
+  hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
+  hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
+  hspi1.Init.NSS = SPI_NSS_SOFT;
+  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_4;
+  hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
+  hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
+  hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
+  hspi1.Init.CRCPolynomial = 10;
+  
+  /* 3. A HAL pega a struct acima e escreve nos registradores (CR1 e CR2) */
+  if (HAL_SPI_Init(&hspi1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+}
+\end{lstlisting}
+
+\textbf{O que você precisa saber sobre esses parâmetros:}
+\begin{itemize}
+    \item \textbf{\texttt{Mode} e \textbf{Direction}:} Definem o STM32 como Mestre (\texttt{SPI\_MODE\_MASTER}) e ativam o modo \textit{Full-Duplex} clássico usando as linhas MOSI e MISO simultaneamente (\texttt{SPI\_DIRECTION\_2LINES}).
+    
+    \item \textbf{\texttt{DataSize} e \texttt{FirstBit}:} Quase todos os sensores do mercado enviam pacotes de 8 bits (\texttt{8BIT}), começando pelo bit mais significativo (\texttt{MSB}), ou seja, o bit 7 viaja pelo fio primeiro.
+    
+    \item \textbf{\texttt{CLKPolarity} (CPOL) e \texttt{CLKPhase} (CPHA):} Aqui é onde definimos o \textbf{Modo do SPI} exigido pelo sensor. \texttt{POLARITY\_LOW} significa que o relógio descansa em 0V. \texttt{1EDGE} significa que a leitura do bit acontece na primeira borda do pulso do relógio. 
+    
+    
+    \item \textbf{\texttt{NSS = SPI\_NSS\_SOFT} (O polêmico Chip Select):} 
+    Por padrão, assumimos o controle manual do CS via software. Mas e se você quisesse que o hardware fizesse isso sozinho? Você mudaria para \textbf{\texttt{SPI\_NSS\_HARD\_OUTPUT}}. 
+    \textit{O lado bom:} O pino CS (ex: PA4) desce e sobe automaticamente quando você usa a função \texttt{HAL\_SPI\_Transmit}.
+    \textit{A armadilha:} A implementação do NSS por hardware no STM32 é notoriamente rígida. Em transferências contínuas de múltiplos bytes, ele pode subir e descer o pino entre cada byte muito rápido, o que confunde 90\% dos sensores do mercado. É por isso que a imensa maioria dos engenheiros prefere usar \texttt{SOFT} e controlar um pino GPIO normal, garantindo que o CS fique em 0V durante toda a transação.
+    
+    \item \textbf{\texttt{BaudRatePrescaler} (Qual é o melhor Baud Rate?):} 
+    A engrenagem de velocidade. Se o barramento APB2 estiver rodando a 84 MHz, um Prescaler de 4 (\texttt{SPI\_BAUDRATEPRESCALER\_4}) dividirá o relógio para 21 MHz. 
+    \textit{Mas qual usar?} Não existe um ``melhor'' universal. A regra de ouro é: leia o datasheet do sensor (muitos limitam a velocidade máxima em 1 MHz ou 10 MHz). Além disso, considere a física: se estiver usando cabos jumper frouxos em uma protoboard, sinais acima de 2 MHz viram puro ruído (interferência eletromagnética e capacitância parasita). Se for uma placa de circuito impresso (PCB) bem desenhada com trilhas curtas, você pode empurrar para 20 MHz a 50 MHz sem medo.
+    
+    \item \textbf{\texttt{CRCCalculation} e \texttt{CRCPolynomial}:} 
+    CRC significa \textit{Cyclic Redundancy Check} (Checagem de Redundância Cíclica). Em um foguete, a vibração e o ruído dos motores podem causar um ``bit flip'' (um 0 virar 1 no meio do fio do SPI). 
+    Para evitar que o processador leia um dado corrompido, o STM32 tem um hardware dedicado que pega os bits que estão viajando e faz uma divisão matemática complexa usando um número chave (\textbf{O Polinômio}, que por padrão é 10). O resto dessa divisão é anexado ao final da mensagem. Se o sensor (que também deve ter o mesmo polinômio) fizer a conta e o resultado não bater, ele sabe que o pacote sofreu interferência e o descarta. Na bancada de testes, geralmente deixamos em \texttt{DISABLE} para simplificar a vida.
 \end{itemize}
 
 \subsubsection{SPI com HAL (A Armadilha Comum)}
@@ -3373,6 +3560,7 @@ Você fornece apenas o buffer de recepção (\texttt{pData}).
 % ==========================================
 % Observações sobre os Protocolos
 % ==========================================
+\newpage
 \subsection{Observações sobre os Protocolos}
 
 \subsubsection{A Quantidade de Periféricos (Os Handlers hspiX, hi2cX, huartX)}
@@ -3424,8 +3612,218 @@ SPI1->CR1 |= (1UL << 2); // Configura como Master
 \end{lstlisting}  
 
 % ==========================================
+% USB (Universal Serial Bus)
+% ==========================================
+\newpage
+\section{Comunicação Avançada: USB (Universal Serial Bus)}
+
+Se você sobreviveu à configuração da UART, I2C e SPI, prepare-se: o USB é um monstro completamente diferente. Enquanto os barramentos anteriores são essencialmente ``empurrar bits para um registrador e o hardware faz o resto'', o USB exige uma verdadeira dança entre hardware e software.
+
+O USB não é apenas um periférico elétrico; ele exige uma pilha de software (Middleware) rodando no microcontrolador para gerenciar a enumeração (quando o computador pergunta ``quem é você?''), os descritores e os \textit{Endpoints} (tubos de dados).
+
+
+
+\subsection{A Anatomia do USB no STM32}
+No STM32F411, temos o periférico \textbf{USB OTG FS} (On-The-Go Full Speed, rodando a 12 Mbps). Ele usa apenas dois pinos de dados (\texttt{PA11 - D-} e \texttt{PA12 - D+}), operando com sinais diferenciais para imunidade a ruído.
+\begin{quote}
+\textbf{Nota de Hardware (Exclusividade dos Pinos):} \\
+Em placas de desenvolvimento comerciais (como a BlackPill), o conector USB-C físico já possui trilhas de cobre ligando os sinais de dados diretamente aos pinos \texttt{PA11} e \texttt{PA12} do chip STM32. Ao ativar o USB no CubeMX, esses dois pinos tornam-se de uso exclusivo do barramento. Você não poderá usá-los como GPIOs comuns enquanto o USB estiver operando. Em projetos de placas customizadas, o engenheiro deve rotear as trilhas do conector USB especificamente para estes dois pinos.
+\end{quote}
+
+\subsection{USB CDC: O Fim do Adaptador FTDI}
+A classe mais útil e comum para iniciantes é a \textbf{CDC (Communications Device Class)}. Quando você configura o STM32 como um dispositivo CDC, ele engana o computador (Windows/Linux/Mac), fazendo-o acreditar que o cabo USB é, na verdade, uma porta Serial (COM) antiga. 
+Isso permite que você envie \texttt{printf} e receba dados diretamente pelo cabo USB, sem precisar daqueles conversores USB-Serial (FT232 ou CH340) espetados nos pinos da placa.
+
+\subsubsection{Configuração no CubeMX (A Mágica do Middleware)}
+Diferente da UART, a configuração do USB no CubeMX é dividida em duas partes:
+\begin{enumerate}
+    \item \textbf{O Hardware (Periférico):} Na aba \textit{Connectivity}, ativamos o \texttt{USB\_OTG\_FS} em modo \textit{Device\_Only}.
+    \item \textbf{O Software (Middleware):} Na aba \textit{Middleware}, ativamos o \texttt{USB\_DEVICE} e selecionamos a classe \textit{Communication Device Class (Virtual Port Com)}.
+\end{enumerate}
+
+\subsubsection{Enviando e Recebendo Dados (O Padrão Eco)}
+Aqui está a maior quebra de paradigma: você \textbf{não} usa funções padrão da HAL no seu \texttt{main.c} (como um \texttt{HAL\_USB\_Receive}). O CubeMX cria uma pasta inteira chamada \texttt{USB\_Device}, e o arquivo mais importante para nós lá dentro é o \texttt{usbd\_cdc\_if.c} (A Interface do CDC).
+
+Para mostrar como o USB funciona na prática, vamos montar um código clássico de ``Eco'': tudo que o computador enviar pelo terminal serial, o STM32 vai ler e mandar de volta.
+
+\paragraph{Passo 1: O Lado do Middleware (\texttt{usbd\_cdc\_if.c})}
+A recepção no USB CDC é 100\% baseada em interrupções ocultas. Quando o computador envia um pacote, o Middleware dispara silenciosamente a função \texttt{CDC\_Receive\_FS()} dentro do arquivo \texttt{usbd\_cdc\_if.c}.
+
+Seu trabalho é ir até este arquivo, avisar que existem variáveis no seu \texttt{main.c} (usando \texttt{extern}), e copiar os dados do \textit{buffer} interno do USB para as suas variáveis.
+
+\begin{lstlisting}[language=C]
+/* Dentro de usbd_cdc_if.c */
+
+/* 1. Importamos as variaveis que vivem no main.c */
+extern uint8_t RxData[256];
+extern uint16_t RxSize;
+extern uint8_t DataReceived;
+
+/* ... role ate achar a funcao de recepcao ... */
+
+static int8_t CDC_Receive_FS(uint8_t* Buf, uint32_t *Len)
+{
+  /* USER CODE BEGIN 6 */
+  
+  RxSize = *Len;
+  
+  /* 2. Escudo contra Buffer Overflow: O USB envia bytes puros, se o 
+        pacote for maior que o nosso vetor, o memcpy travaria o chip! */
+  if (RxSize < 256) { // Geralmente o serial nao manda o \0 automaticamente
+      memcpy(RxData, Buf, RxSize);
+      RxData[RxSize] = '\0'; /* Garantia absoluta de que virou uma String segura! */
+      DataReceived = 1; /* Levantamos a bandeira avisando o main! */
+  }
+  
+  /* 3. "Posicionando o balde" para a proxima gota */
+  USBD_CDC_SetRxBuffer(&hUsbDeviceFS, &Buf[0]);
+  
+  /* 4. "Abrindo a torneira" novamente */
+  USBD_CDC_ReceivePacket(&hUsbDeviceFS);
+  
+  return (USBD_OK);
+  /* USER CODE END 6 */
+}
+\end{lstlisting}
+
+\textbf{Atenção de Ouro (As funções do final):} 
+Se você apagar as duas últimas funções geradas pelo CubeMX, o seu STM32 receberá exatamente \textbf{uma} mensagem do computador e depois ficará ``surdo'' para sempre. 
+\begin{itemize}
+    \item \textbf{\texttt{USBD\_CDC\_SetRxBuffer}:} Como o USB funciona sem parar, esta função avisa o Middleware onde ele deve guardar o \textit{próximo} pacote que chegar do PC. Ao passar \texttt{\&Buf[0]}, estamos dizendo: ``Eu já copiei os dados, você pode sobrescrever este espaço na próxima vez''.
+    \item \textbf{\texttt{USBD\_CDC\_ReceivePacket}:} O USB possui um mecanismo de \textit{Acknowledge} (Confirmação). Quando um pacote chega, o hardware do STM32 ``fecha as portas'' (\textit{NAK}) para o PC não atropelar a memória enquanto você lê os dados. Esta função é você dizendo ao hardware: ``Terminei de ler, destranque as portas e prepare-se para receber o próximo pacote''.
+\end{itemize}
+
+\begin{quote}
+\textbf{Nota de Engenharia (O Mistério do \texttt{< 256}):} \\
+Você deve ter notado o limite \texttt{if (RxSize < 256)} em vez de \texttt{<= 256}. Por que desperdiçar 1 byte do nosso vetor de 256 posições? 
+Isso é uma defesa contra o colapso da RAM. O USB transmite bytes puros, sem o terminador de texto (\texttt{\textbackslash0}). Se recebermos exatos 256 bytes de texto e lotarmos o vetor, não sobrará espaço para adicionar o \texttt{\textbackslash0} no final. Ao tentarmos imprimir ou manipular isso com funções da biblioteca \texttt{<string.h>}, a CPU leria fora dos limites do vetor, travando o microcontrolador. 
+Ao limitar a cópia a 255 bytes, garantimos que sempre haverá espaço para injetar um terminador de segurança, caso seja necessário transformar os dados brutos em uma \textit{String} clássica da linguagem C.
+\end{quote}
+
+\paragraph{Passo 2: O Lado do Código Principal (\texttt{main.c})}
+Agora que o Middleware está configurado para nos avisar quando chegarem mensagens, voltamos ao nosso \texttt{main.c}. O CubeMX já terá colocado o \texttt{\#include ``usb\_device.h''} e a função de inicialização \texttt{MX\_USB\_DEVICE\_Init()}.
+
+Tudo o que precisamos fazer é criar as variáveis que prometemos e monitorar a nossa ``bandeira'' dentro do loop infinito.
+
+\begin{lstlisting}[language=C]
+/* Dentro de main.c */
+#include "usbd_cdc_if.h" /* Para acessar a funcao de Transmissao */
+#include <string.h>      /* Para a funcao memset */
+
+/* 1. Declaracao das nossas variaveis globais (que o usbd_cdc_if.c usa) */
+uint8_t RxData[256];
+uint16_t RxSize;
+uint8_t DataReceived = 0;
+
+int main(void)
+{
+  HAL_Init();
+  SystemClock_Config();
+  MX_USB_DEVICE_Init(); /* Inicializa a pilha USB inteira */
+
+  while (1)
+  {
+    /* 2. Checamos se o Middleware levantou a bandeira */
+    if (DataReceived == 1)
+    {
+      /* Envia de volta exatamente o que chegou (O Eco) */
+      CDC_Transmit_FS(RxData, RxSize);
+      
+      /* Limpa a bandeira e zera o buffer para a proxima mensagem */
+      DataReceived = 0;
+      memset(RxData, 0, sizeof(RxData));
+    }
+  }
+}
+\end{lstlisting}
+
+
+% ==========================================
+% DMA (Direct Memory Access)
+% ==========================================
+
+\newpage
+\section{DMA (Direct Memory Access): O Assistente da CPU}
+
+Se você quer que o seu STM32 processe a telemetria do foguete enquanto lê sensores simultaneamente, não pode desperdiçar o tempo da CPU movendo bytes de um lado para o outro. É aqui que entra o DMA.
+
+\subsection{O Problema das Interrupções}
+Mesmo usando interrupções (\textit{Interrupts}), a CPU ainda precisa parar o que está fazendo, salvar seu contexto de execução, ir até o registrador do periférico (como o \texttt{SPI1->DR}), pegar o byte recebido e copiar para a memória RAM. Se você recebe dados de um sensor a 1 Mbps, a CPU será interrompida centenas de milhares de vezes por segundo. Isso destrói o desempenho de qualquer algoritmo de controle.
+
+\subsection{A Solução: O Co-processador Independente}
+O DMA é um hardware interno do STM32 dedicado exclusivamente a mover dados. Você o configura dando uma ordem simples: ``Pegue os próximos 100 bytes que chegarem na UART e coloque neste vetor na RAM. Me avise apenas quando terminar''. 
+
+A partir desse momento, o DMA assume o controle do barramento de dados quando a CPU não o está usando, fazendo as transferências em \textit{background}. A CPU fica 100\% livre para fazer cálculos matemáticos pesados.
+
+
+
+\subsection{Configuração no CubeMX}
+Ativar o DMA é surpreendentemente simples no CubeMX. A grande sacada é que você o configura de \textit{dentro} do periférico alvo:
+\begin{enumerate}
+    \item Abra a aba do periférico que você quer acelerar (ex: \texttt{USART2}).
+    \item Vá na aba \textbf{DMA Settings} e clique no botão \textbf{Add}.
+    \item Selecione a direção (\texttt{USART2\_RX} para receber ou \texttt{USART2\_TX} para enviar).
+    \item \textbf{Mode:} Escolha \textbf{Normal} (faz a transferência uma vez e para) ou \textbf{Circular} (quando o vetor da RAM enche, o DMA volta para o índice zero automaticamente -- perfeito para \textit{buffers} contínuos de sensores).
+    \item \textbf{Data Width:} Geralmente \textbf{Byte} (8 bits) para UART e SPI, e \textbf{Half Word} (16 bits) para leituras do ADC.
+\end{enumerate}
+
+\subsection{O Código com HAL}
+A mudança no seu \texttt{main.c} é mínima. Em vez de usar as funções que terminam em \texttt{\_IT} (Interrupção) ou em \textit{polling}, usamos a terminação \texttt{\_DMA}:
+
+\begin{lstlisting}[language=C]
+/* Exemplo 1: Enviando dados por DMA */
+uint8_t buffer_tx[] = "Dados de Telemetria";
+/* A funcao retorna na hora, e o hardware continua enviando no fundo */
+HAL_UART_Transmit_DMA(&huart2, buffer_tx, sizeof(buffer_tx));
+
+/* Exemplo 2: Recebendo dados por DMA (Modo Normal) */
+uint8_t buffer_rx[50];
+/* O DMA vai preencher as 50 posicoes no fundo */
+HAL_UART_Receive_DMA(&huart2, buffer_rx, 50);
+\end{lstlisting}
+
+\subsection{A Armadilha do DMA: Sincronização}
+O maior erro de quem começa a usar o DMA é tentar ler o \texttt{buffer\_rx} antes da hora. Como o DMA trabalha nos bastidores, se a sua CPU tentar processar o vetor enquanto a transferência ainda está acontecendo na metade, você vai ler ``lixo'' misturado com dados antigos.
+
+Para resolver isso, a HAL fornece os mesmos \textit{Callbacks} das interrupções. Quando o DMA terminar de mover exatamente os 50 bytes do exemplo acima, ele dispara a função \texttt{HAL\_UART\_RxCpltCallback()}. É \textbf{apenas} dentro dessa função que você tem a garantia matemática de que o seu vetor está pronto para ser processado.
+
+\subsubsection{A Cereja do Bolo: O Callback do DMA}
+Quando o DMA termina de copiar a quantidade exata de bytes que você pediu, ele avisa a CPU gerando uma interrupção de hardware. A HAL intercepta esse aviso e chama uma função \textit{Callback} específica. 
+
+É apenas dentro (ou a partir) dessa função que você deve processar os dados, pois é a sua garantia matemática de que o vetor está 100\% preenchido e sem ``lixo'' de memória. No caso da UART, a função é a \texttt{HAL\_UART\_RxCpltCallback}. Você deve escrevê-la no seu \texttt{main.c} (geralmente na seção \texttt{USER CODE BEGIN 4}, lá no final do arquivo):
+
+\begin{lstlisting}[language=C]
+/* 1. Declaramos o nosso buffer global e a flag */
+uint8_t buffer_rx[50];
+uint8_t dados_prontos = 0; /* Nossa "bandeira" avisando a CPU */
+
+/* ... dentro da inicializacao do main() ... */
+/* 2. Damos a ordem inicial para o DMA buscar 50 bytes */
+HAL_UART_Receive_DMA(&huart2, buffer_rx, 50);
+
+/* ... no final do main.c (USER CODE BEGIN 4) ... */
+/* 3. A HAL chama esta funcao automaticamente quando o DMA terminar */
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+    /* Verifica se quem terminou a tarefa foi a USART2 */
+    if (huart->Instance == USART2)
+    {
+        /* Levanta a bandeira para o loop principal saber que chegou dado */
+        dados_prontos = 1;
+        
+        /* Opcional: Se o DMA estiver configurado em modo Normal, 
+           precisamos rearmar a armadilha para o proximo pacote. */
+        HAL_UART_Receive_DMA(&huart2, buffer_rx, 50);
+    }
+}
+\end{lstlisting}
+
+No seu \texttt{while(1)}, o trabalho da CPU fica absurdamente simples: ela apenas testa se a variável \texttt{dados\_prontos} virou \texttt{1}. Se sim, ela processa os dados do vetor, zera a \textit{flag} e volta imediatamente para os seus cálculos principais. Essa é a arquitetura padrão-ouro para sistemas de tempo real!
+
+% ==========================================
 % ARQUITETURA DE SOFTWARE E DRIVERS
 % ==========================================
+\newpage
 \section{Arquitetura de Software e Drivers}
 
 \begin{figure}[H]
@@ -3728,6 +4126,7 @@ Sobre protocolos e programação em geral é isso, para mais informações útei
 % ==========================================
 % VISÃO GERAL DO STM32CUBEMX
 % ==========================================
+\newpage
 \section{Visão Geral do STM32CubeMX}
 
 Para consolidar a arquitetura do seu projeto, uma seção dedicada à interface gráfica do STM32CubeMX é fundamental. O CubeMX não é apenas um gerador de código, mas uma ferramenta de modelagem de hardware que dita as regras do que o compilador vai enxergar.
@@ -3842,6 +4241,7 @@ A aba \textit{Tools} contém utilitários de engenharia que auxiliam no planejam
 % ==========================================
 % COMPILAÇÃO E DEPURAÇÃO
 % ==========================================
+\newpage
 \section{Compilação e Depuração}
 
 \begin{figure}[H]
@@ -4114,6 +4514,7 @@ Deslocando o valor \texttt{1000 0000} (Decimal 128) duas casas para a direita.
 % ==========================================
 % ANEXO 2: FPU (Floating Point Unit)
 % ==========================================
+\newpage
 \subsection*{Anexo 2: FPU (Floating Point Unit)}
 \label{anexo:2}
 \addcontentsline{toc}{subsection}{Anexo 2: FPU (Floating Point Unit)}
@@ -4151,6 +4552,7 @@ Deslocando o valor \texttt{1000 0000} (Decimal 128) duas casas para a direita.
 % ==========================================
 % ANEXO 3: Modes e Pulls do GPIO
 % ==========================================
+\newpage
 \subsection*{Anexo 3: Modes e Pulls do GPIO}
 \label{anexo:3}
 \addcontentsline{toc}{subsection}{Anexo 3: Modes e Pulls do GPIO}
@@ -4227,6 +4629,7 @@ Aqui está a maior confusão da maioria dos programadores: Push-Pull vs Open-Dra
 % ==========================================
 % ANEXO 4: ODR vs. BSSR
 % ==========================================
+\newpage
 \subsection*{Anexo 4: ODR vs. BSRR}
 \label{anexo:4}
 \addcontentsline{toc}{subsection}{Anexo 4: ODR vs. BSRR}
@@ -4278,6 +4681,7 @@ Como os 0s são ignorados pelo hardware do BSRR, os outros pinos não são tocad
 % ==========================================
 % ANEXO 5: NVIC Bare-Metal Programming
 % ==========================================
+\newpage
 \subsection*{Anexo 5: NVIC Bare-Metal Programming}
 \label{anexo:5}
 \addcontentsline{toc}{subsection}{Anexo 5: NVIC Bare-Metal Programming}
@@ -4567,6 +4971,7 @@ Com essa lógica, você consegue mapear absolutamente qualquer interrupção (de
 % ==========================================
 % ANEXO 6: BOOT0, BOOT1 e NRST (RESET)
 % ==========================================
+\newpage
 \subsection*{Anexo 6: BOOT0, BOOT1 e NRST (RESET)}
 \label{anexo:6}
 \addcontentsline{toc}{subsection}{Anexo 6: BOOT0, BOOT1 e NRST (RESET)}
@@ -4621,6 +5026,7 @@ O botão de RESET da sua placa é literalmente uma chavinha mecânica com um lad
 % ==========================================
 % ANEXO 7: Arquitetura do STM32
 % ==========================================
+\newpage
 \subsection*{Anexo 7: Arquitetura do STM32}
 \label{anexo:7}
 \addcontentsline{toc}{subsection}{Anexo 7: Arquitetura do STM32}
@@ -4712,6 +5118,7 @@ Vamos detalhar as quatro regiões principais mostradas:
 % ==========================================
 % ANEXO 8: RCC (Extras)
 % ==========================================
+\newpage
 \subsection*{Anexo 8: RCC (Extras)}
 \label{anexo:8}
 \addcontentsline{toc}{subsection}{Anexo 8: RCC (Extras)}
@@ -4749,6 +5156,7 @@ Esses três pontos fecham 100\% das responsabilidades do bloco RCC.
 % ==========================================
 % ANEXO 9: RTC (Real-Time Clock)
 % ==========================================
+\newpage
 \subsection*{Anexo 9: RTC (Real-Time Clock)}
 \label{anexo:9}
 \addcontentsline{toc}{subsection}{Anexo 9: RTC (Real-Time Clock)}
@@ -4757,14 +5165,19 @@ Enquanto os Timers convencionais (como o TIM2 ou TIM3) são cronômetros esporti
 
 A maior força do RTC no STM32 é o \textit{Backup Domain} (Domínio de Backup). O hardware do RTC fica isolado do resto do processador. Se a energia principal da placa for cortada (ou o foguete der um reset no ar), o RTC puxa energia automaticamente de uma bateria tipo ``moeda'' (ligada ao pino VBAT) e continua contando o tempo sem perder um único milissegundo.
 
-
-
-\subsubsection*{1. A Matemática do Relógio (O Cristal LSE)}
+\subsubsection*{1. A Matemática do Relógio (Os Prescalers 127 e 255)}
 Para economizar a bateria externa, o RTC não usa o relógio principal veloz do sistema. Ele exige a soldagem de um cristal de quartzo cilíndrico dedicado, chamado LSE (\textit{Low-Speed External}).
 
 A frequência mundial padrão para cristais de relógio é 32.768 kHz. Isso não é um número aleatório. É exatamente $2^{15}$. O hardware do RTC possui dois divisores de frequência (Prescalers, o Assíncrono e o Síncrono) que dividem essa oscilação perfeitamente para gerar o pulso de 1 Hz. A fórmula que o silício executa é:
-\[ f_{RTC} = \frac{32768}{(PREDIV\_A + 1) \times (PREDIV\_S + 1)} = 1 \text{ Hz} \]
-Na prática (e no CubeMX), o Prescaler Assíncrono é setado para 127 e o Síncrono para 255. A divisão perfeita resulta em 1 segundo cravado.
+$$f_{RTC} = \frac{32768}{(PREDIV\_A + 1) \times (PREDIV\_S + 1)} = 1 \text{ Hz}$$
+
+\textbf{Mas por que usar exatamente 127 e 255?} \\
+A matemática pura nos mostra que $(127 + 1) \times (255 + 1) = 128 \times 256 = 32768$. Porém, a razão para não usarmos outras combinações (como 3 e 8191) é puramente \textbf{consumo de energia}:
+\begin{itemize}
+    \item \textbf{Prescaler Assíncrono (\texttt{PREDIV\_A}):} É o primeiro estágio do circuito, que leva a pancada constante dos 32.768 kHz. Ele é um registrador de 7 bits (valor máximo 127). A recomendação oficial da ARM/ST é maximizar esse registrador. Ao dividir logo de cara por 128, o sinal cai bruscamente para 256 Hz.
+    \item \textbf{Prescaler Síncrono (\texttt{PREDIV\_S}):} É a segunda engrenagem. Ela recebe o sinal de 256 Hz e faz a divisão final por 256 (inserindo o valor 255) para gerar exato 1 pulso por segundo. Como esse setor do silício opera em uma frequência baixíssima, ele gasta pouquíssima energia.
+\end{itemize}
+Essa tática de "frear" o clock o mais rápido possível no estágio assíncrono é o que permite que uma simples bateria tipo moeda (CR2032) no pino VBAT mantenha o relógio do seu foguete batendo por anos a fio sem descarregar.
 
 \subsubsection*{2. O Formato BCD (Binary-Coded Decimal)}
 Diferente do resto do chip, o RTC não guarda o número ``26'' como \texttt{0x1A} (o binário real). Ele guarda a dezena e a unidade separadamente em ``pacotes'' de 4 bits, o chamado BCD.
@@ -4773,14 +5186,55 @@ Diferente do resto do chip, o RTC não guarda o número ``26'' como \texttt{0x1A
     \item Valor no registrador: \texttt{0010 0110} (Lido no código hexadecimal como \texttt{0x26}).
 \end{itemize}
 
-\subsubsection*{3. RTC com HAL (A Armadilha da Sombra)}
-O CubeMX gera o código de inicialização \texttt{MX\_RTC\_Init()} configurando o calendário. O mais importante é como ler esses dados no seu \texttt{while(1)}.
+\subsubsection*{3. RTC com HAL: Configuração e a Armadilha da Sombra}
 
-\textbf{Regra de Ouro da HAL no RTC:} O hardware do RTC usa ``Registradores Sombra'' (\textit{Shadow Registers}). Quando você lê a Hora, o hardware congela a Data nos bastidores para garantir que você não leia a data errada caso o dia vire no exato milissegundo da leitura.
+\textbf{Passo 1: Configuração no CubeMX}
+\begin{enumerate}
+    \item Na aba \textit{System Core}, vá em \textbf{RCC} e ligue o \textit{Low Speed Clock (LSE)} como \textit{Crystal/Ceramic Resonator}.
+    \item Em \textit{Timers}, selecione \textbf{RTC}. Marque as caixas \textit{Activate Clock Source} e \textit{Activate Calendar}.
+    \item Na aba \textit{Clock Configuration}, garanta que o sinal LSE está alimentando o \textit{RTC Clock Mux}.
+    \item Nos \textit{Parameter Settings}, você pode inserir a data e hora iniciais de compilação.
+\end{enumerate}
+
+\textbf{Passo 2: A Inicialização (\texttt{MX\_RTC\_Init})}
+O código gerado preenche os divisores matemáticos e envia a hora/data inicial. Note que o CubeMX inteligentemente envia os números no formato \texttt{BCD} direto em hexadecimal (\texttt{0x14} para 14h):
+
+\begin{lstlisting}[language=C]
+static void MX_RTC_Init(void)
+{
+  /* 1. Estruturas padrao da HAL */
+  RTC_TimeTypeDef sTime = {0};
+  RTC_DateTypeDef sDate = {0};
+
+  /* 2. Configura a matematica do motor do relogio */
+  hrtc.Instance = RTC;
+  hrtc.Init.HourFormat = RTC_HOURFORMAT_24;
+  hrtc.Init.AsynchPrediv = 127;
+  hrtc.Init.SynchPrediv = 255;
+  hrtc.Init.OutPut = RTC_OUTPUT_DISABLE;
+  if (HAL_RTC_Init(&hrtc) != HAL_OK) { Error_Handler(); }
+
+  /* 3. Ajusta a Hora Inicial (Ex: 14:30:00) usando HEX para simular BCD! */
+  sTime.Hours = 0x14;   /* 0x14 Hex = 0001 0100 Binario (Exatamente 1 e 4 no BCD!) */
+  sTime.Minutes = 0x30;
+  sTime.Seconds = 0x00;
+  if (HAL_RTC_SetTime(&hrtc, &sTime, RTC_FORMAT_BCD) != HAL_OK) { Error_Handler(); }
+
+  /* 4. Ajusta a Data Inicial */
+  sDate.WeekDay = RTC_WEEKDAY_THURSDAY;
+  sDate.Month = RTC_MONTH_FEBRUARY;
+  sDate.Date = 0x26; 
+  sDate.Year = 0x26;
+  if (HAL_RTC_SetDate(&hrtc, &sDate, RTC_FORMAT_BCD) != HAL_OK) { Error_Handler(); }
+}
+\end{lstlisting}
+
+\textbf{Passo 3: A Leitura no \texttt{while(1)} (Regra de Ouro)}
+O hardware do RTC usa ``Registradores Sombra'' (\textit{Shadow Registers}). Quando você lê a Hora, o hardware congela a Data nos bastidores para garantir que você não leia a data errada caso o dia vire no exato milissegundo da leitura.
 Por isso, você é \textbf{obrigado a ler a Data logo após a Hora}, mesmo que não vá usá-la. Se ler só a Hora, o hardware trava os registradores esperando você ler a Data, e o seu relógio ``congela'' na tela.
 
 \begin{lstlisting}[language=C]
-/* Variaveis para guardar os dados */
+/* Variaveis para guardar os dados na memoria RAM */
 RTC_TimeTypeDef sTime = {0};
 RTC_DateTypeDef sDate = {0};
 
@@ -4793,20 +5247,71 @@ HAL_RTC_GetTime(&hrtc, &sTime, RTC_FORMAT_BIN);
 /* 2. LER A DATA LOGO EM SEGUIDA (Obrigatorio para destravar o hardware!) */
 HAL_RTC_GetDate(&hrtc, &sDate, RTC_FORMAT_BIN);
 
-/* Agora as variaveis estao limpas e prontas para uso */
+/* Agora as variaveis estao limpas e prontas para uso no printf */
 printf("Data: %02d/%02d/20%02d\r\n", sDate.Date, sDate.Month, sDate.Year);
 printf("Hora: %02d:%02d:%02d\r\n", sTime.Hours, sTime.Minutes, sTime.Seconds);
 \end{lstlisting}
 
-\subsubsection*{4. RTC no ``Bare-Metal'' (Abrindo o Cofre)}
-Configurar o RTC direto nos registradores ensina muito sobre a segurança arquitetural do ARM Cortex. O RTC é tratado como um ``cofre''. Você não pode simplesmente escrever a hora nele, pois ruídos elétricos acidentais poderiam corromper o calendário.
+\subsubsection*{4. RTC no ``Bare-Metal'' (Abrindo o Cofre e Lendo BCD)}
+Configurar o RTC direto nos registradores ensina muito sobre a segurança arquitetural do ARM Cortex. O RTC é tratado como um ``cofre''. Você não pode simplesmente escrever a hora nele, pois ruídos elétricos acidentais poderiam corromper o calendário. O processo exige chaves de segurança para destravar o modo de inicialização.
 
-O processo exige três chaves de segurança:
-\begin{enumerate}
-    \item Ligar a energia do Backup Domain (Registrador \texttt{PWR->CR}).
-    \item Ligar o cristal LSE e esperar ele estabilizar (Registrador \texttt{RCC->BDCR}).
-    \item Entrar no Modo de Inicialização (INIT) (Registrador \texttt{RTC->ISR}). Só neste modo o relógio para de bater e permite que você altere os ponteiros.
-\end{enumerate}
+\begin{lstlisting}[language=C]
+/* ========================================================== */
+/* A. DESTRAVANDO O COFRE E LIGANDO O CRISTAL                 */
+/* ========================================================== */
+RCC->APB1ENR |= (1UL << 28);      // Liga o clock do controlador de Energia (PWR)
+PWR->CR |= (1UL << 8);            // DBP: Abre a fechadura do cofre de backup
+
+RCC->BDCR |= (1UL << 0);          // LSEON: Liga o cristal externo de 32.768 kHz
+while (!(RCC->BDCR & (1UL << 1)));// Espera o bit LSERDY ir a 1 (Cristal estabilizou)
+
+RCC->BDCR |= (1UL << 8);          // RTCSEL: Seleciona LSE (01)
+RCC->BDCR |= (1UL << 15);         // RTCEN: Liga o motor do RTC
+
+/* ========================================================== */
+/* B. MODO INIT E CONFIGURACAO DE HORA (Ex: 14:30:00)         */
+/* ========================================================== */
+RTC->WPR = 0xCA;                  // Chave Magica 1
+RTC->WPR = 0x53;                  // Chave Magica 2
+
+RTC->ISR |= (1UL << 7);           // INIT: Pede para entrar no modo de configuracao
+while (!(RTC->ISR & (1UL << 6))); // Espera a flag INITF confirmar a entrada
+
+RTC->PRER = (127UL << 16) | (255UL); // Prescalers da Matematica do Relogio
+
+/* Ajusta a Hora no Registrador TR (Time Register) usando formato BCD */
+RTC->TR = (1UL << 20) | (4UL << 16) |  // Dezenas(1) e Unidades(4) da Hora
+          (3UL << 12) | (0UL << 8)  |  // Dezenas(3) e Unidades(0) dos Minutos
+          (0UL << 4)  | (0UL << 0);    // Dezenas(0) e Unidades(0) dos Segundos
+
+RTC->ISR &= ~(1UL << 7);          // Sai do modo INIT (O relogio volta a bater)
+RTC->WPR = 0xFF;                  // Escreve chave invalida para trancar o cofre de novo
+\end{lstlisting}
+
+\textit{Para ler no Bare-Metal:} O registrador nos entrega tudo grudado no formato BCD. É o momento perfeito para aplicar as máscaras de \textit{Bitwise} (\texttt{\&}) e os deslocamentos (\texttt{>>}) para separar os dígitos e montar o número decimal para os nossos cálculos e displays.
+
+\begin{lstlisting}[language=C]
+/* ========================================================== */
+/* C. A LEITURA (O Desafio do BCD)                            */
+/* ========================================================== */
+
+/* 1. Sincronizando com a Sombra (Shadow Register) */
+RTC->ISR &= ~(1UL << 5);          // Limpa a flag RSF
+while (!(RTC->ISR & (1UL << 5))); // Espera o hardware sincronizar a leitura exata
+
+/* 2. Leitura bruta dos registradores de Tempo e Data */
+uint32_t tr = RTC->TR; 
+uint32_t dr = RTC->DR;
+
+/* 3. Extraindo e convertendo BCD em variaveis Decimais puras (Magica do Bitwise) */
+uint8_t horas   = (((tr >> 20) & 0x3) * 10) + ((tr >> 16) & 0xF);
+uint8_t minutos = (((tr >> 12) & 0x7) * 10) + ((tr >> 8)  & 0xF);
+uint8_t segundos= (((tr >> 4)  & 0x7) * 10) + ((tr >> 0)  & 0xF);
+
+uint8_t ano     = (((dr >> 20) & 0xF) * 10) + ((dr >> 16) & 0xF);
+uint8_t mes     = (((dr >> 12) & 0x1) * 10) + ((dr >> 8)  & 0xF);
+uint8_t dia     = (((dr >> 4)  & 0x3) * 10) + ((dr >> 0)  & 0xF);
+\end{lstlisting}
 
 \begin{lstlisting}[language=C]
 /* ========================================================== */
@@ -4855,6 +5360,7 @@ RTC->WPR = 0xFF;                  // Escreve chave invalida para travar
 % ==========================================
 % ANEXO 10: Stack/Heap Sizes
 % ==========================================
+\newpage
 \subsection*{Anexo 10: Stack/Heap Sizes}
 \label{anexo:10}
 \addcontentsline{toc}{subsection}{Anexo 10: Stack/Heap Sizes}
@@ -4885,5 +5391,67 @@ O Heap é o oposto. É um espaço de memória reservado exclusivamente para aloc
 Na engenharia aeroespacial e no desenvolvimento de sistemas críticos, existe uma regra de ouro implacável: \textbf{Nunca se usa alocação dinâmica (\texttt{malloc}) em voo}. O motivo é a ``fragmentação de memória''. Se você ficar alocando e liberando blocos de memória, o Heap vira um queijo suíço. Em algum momento crítico, o código vai pedir memória, o sistema não vai achar um bloco contínuo vazio, o \texttt{malloc} vai retornar \texttt{NULL}, e o sistema trava.
 
 \textbf{Recomendação:} A menos que você vá usar o FreeRTOS (que precisa de Heap para criar tarefas), você não deve usar \texttt{malloc()} nos seus códigos de controle. Portanto, o \textit{Minimum Heap Size} pode ficar tranquilo no padrão de \textbf{\texttt{0x200}} (ou até \texttt{0x000}), já que ele será praticamente inútil na sua arquitetura Bare-Metal/HAL.
+
+% ==========================================
+% ANEXO 11: O Paradigma dos Pinos e Funções Alternativas (AF)
+% ==========================================
+\newpage
+\subsection*{Anexo 11: O Paradigma dos Pinos e Funções Alternativas (AF)}
+\label{anexo:11}
+\addcontentsline{toc}{subsection}{Anexo 11: O Paradigma dos Pinos e Funções Alternativas (AF)}
+
+Se você vem do mundo dos microcontroladores de 8 bits (como o ATmega328P do Arduino), está acostumado com pinos de função única. No STM32, as regras mudam. O chip possui um roteador interno avançado chamado \textbf{Alternate Function (AF) Multiplexer}.
+
+Isso significa que o núcleo do SPI, I2C ou UART não está fisicamente soldado a um único pino externo. Você pode configurar o silício para redirecionar o sinal do \texttt{SPI1} para diferentes frentes do chip, dependendo de como você desenhou a sua placa de circuito impresso.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{imagens/STM32F4x1_PinoutDiagram_RichardBalint.png}
+    \caption{Pinagem oficial da BlackPill (STM32F411) detalhando as Funções Alternativas.}
+    \label{fig:pinout_blackpill}
+\end{figure}
+
+\textbf{Como ler o diagrama acima (Avisos de Engenharia):}
+\begin{itemize}
+    \item \textbf{Tolerância a 5V (A maior causa de queima):} Note que a maioria dos pinos possui uma pequena seta preta ao lado do número físico da placa (ex: pino 14, \texttt{PA4}). Isso indica que o pino suporta receber até 5V em suas entradas sem queimar. Porém, olhe a nota no canto inferior esquerdo: no chip F411, os pinos físicos da CPU \textbf{10 (\texttt{PA0})} e \textbf{41 (\texttt{PB5})} são estritamente limitados a 3.3V. Injetar 5V neles (por exemplo, ao ligar a saída de um sensor de 5V direto no ADC do \texttt{PA0}) destruirá o microcontrolador.
+    \item \textbf{A Rota do USB:} Localize o \texttt{PA11} e \texttt{PA12}. As caixas verdes mostram que eles são os donos absolutos do hardware diferencial do USB (\texttt{DM} e \texttt{DP}).
+    \item \textbf{Os Pinos Intocáveis (SWD):} Na parte inferior do diagrama, o \texttt{PA13} e \texttt{PA14} estão designados para o \textit{Serial Wire Debug} (SWDIO e SWCLK). Nunca roteie periféricos para esses pinos, ou você perderá a capacidade de gravar e depurar o seu chip.
+\end{itemize}
+
+\subsubsection*{1. A Armadilha dos 48 Pinos}
+O STM32F411 possui internamente 5 SPIs e 3 I2Cs. Porém, o chip usado na BlackPill (\texttt{STM32F411CEU6}) possui apenas 48 pinos físicos. 
+
+Para caber tudo nesse encapsulamento menor, a STMicroelectronics precisou remover várias alternativas de rotas externas (como o pino \texttt{PB11}). Isso significa que tentar ativar todos os periféricos secundários vai inevitavelmente causar colisões frontais com o USB ou com os pinos do gravador/depurador (JTAG/SWD).
+
+Veja a tabela completa e perceba a engenharia de conflitos por trás do roteamento:
+
+\begin{table}[H]
+    \centering
+    \begin{tabular}{llp{3cm}p{7cm}}
+    \toprule
+    \textbf{Periférico} & \textbf{Sinais} & \textbf{Pinos Iniciais} & \textbf{O Efeito Cascata no STM32F411 de 48 pinos} \\
+    \midrule
+    \textbf{USB (FS)} & \texttt{D- / D+} & \texttt{PA11 / PA12} & \textit{Rota exclusiva física. Intocável se for usar USB.} \\
+    \midrule
+    \textbf{I2C 1} & \texttt{SCL / SDA} & \texttt{PB6 / PB7} & \texttt{PB8 / PB9} (Excelente alternativa, muito usada). \\
+    \textbf{I2C 2} & \texttt{SCL / SDA} & \texttt{PB10 / PB3} & \textbf{Cuidado:} Como o pino \texttt{PB11} não existe na BlackPill, o SDA é forçado para o \texttt{PB3} (Pino de Debug SWO). \\
+    \textbf{I2C 3} & \texttt{SCL / SDA} & \texttt{PA8 / PB4} & \textbf{Cuidado:} \texttt{PB4} também é pino de Debug (NJTRST). \\
+    \midrule
+    \textbf{SPI 1} & \texttt{SCK / MISO / MOSI} & \texttt{PA5 / PA6 / PA7} & \texttt{PB3 / PB4 / PB5} (Entra na zona de conflito com Debug). \\
+    \textbf{SPI 2} & \texttt{SCK / MISO / MOSI} & \texttt{PB13 / PB14 / PB15} & \textbf{O Barramento Seguro:} São pinos livres e limpos na BlackPill. É a primeira escolha ao expandir para um segundo barramento. \\
+    \textbf{SPI 3} & \texttt{SCK / MISO / MOSI} & \texttt{PB3 / PB4 / PB5} & \textit{Mesmos pinos alternativos do SPI1}. Conflita com Debug. \\
+    \textbf{SPI 4} & \texttt{SCK / MISO / MOSI} & \texttt{PB13 / PA11 / PA1} & \textbf{Aviso Crítico:} Sem pinos alternativos sobrando, o MISO cai direto no \texttt{PA11} (USB \texttt{D-}). Inutiliza o USB! \\
+    \textbf{SPI 5} & \texttt{SCK / MISO / MOSI} & \texttt{PB0 / PA12 / PA10} & \textbf{Aviso Crítico:} O MISO cai direto no \texttt{PA12} (USB \texttt{D+}). Inutiliza o USB! \\
+    \midrule
+    \textbf{UART 1} & \texttt{TX / RX} & \texttt{PA9 / PA10} & \texttt{PB6 / PB7} (Se não estiver usando o I2C1). \\
+    \textbf{UART 2} & \texttt{TX / RX} & \texttt{PA2 / PA3} & \textit{Padrão em placas Nucleo para ligação direta com o ST-Link.} \\
+    \bottomrule
+    \end{tabular}
+\end{table}
+
+\begin{quote}
+\textbf{Dica de Ouro do CubeMX:} \\
+Se você segurar a tecla \texttt{CTRL} e clicar com o botão esquerdo sobre um pino já configurado (como o \texttt{PA5} com SPI1 SCK) e arrastar o mouse, o CubeMX vai piscar em azul os outros pinos físicos do chip que têm a capacidade de assumir aquela mesma função! Isso salva a vida do engenheiro de hardware na hora de desembaraçar as trilhas da placa.
+\end{quote}
 
 \end{document}
