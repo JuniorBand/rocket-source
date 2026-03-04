@@ -725,6 +725,11 @@ Ok, agora vamos ajustar algumas coisas, definiremos certas macros para facilitar
 #define GPIO_WRITE_LOW(PORT, PIN)    ((PORT)->BSRR = (0x1UL << ((PIN) + 16)))
 #define GPIO_TOGGLE(PORT, PIN)       ((PORT)->ODR  ^= (0x1UL << (PIN)))
 #define GPIO_READ(PORT, PIN)         (((PORT)->IDR >> (PIN)) & 0x1UL)
+
+// Caso queira usar GPIO_PIN_X da HAL, voce pode substituir PIN por __builtin_ctz(PIN_MASK) nos configs e GPIO_PIN_X por PIN_MASK nos writes:
+// OBS: PIN_MASK é 0x1UL << (PIN_NUM) e __builtin_ctz(PIN_MASK) retorna o numero do pino (ex: 5 para 0x20, 6 para 0x40)
+// Lembre que GPIO_PIN_X da HAL é definido como (0x1UL << X), entao voce pode usar isso diretamente como PIN_MASK
+
 \end{lstlisting}
 
 Vou dar duas versões, uma sem e outra com as macros de funções. A sem, mais crua:
