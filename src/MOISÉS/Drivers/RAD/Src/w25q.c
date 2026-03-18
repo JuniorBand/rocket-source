@@ -17,10 +17,14 @@
 #include "config_voo.h"
 
 
-#define W25Q_SECTOR_SIZE 4096
+#define W25Q_SECTOR_SIZE 4096 // 4 KB para apagar de uma vez (mínimo = tamanho de um setor do W25Q)
+#define W25Q_BLOCK_SIZE 65536 // 64 KB para apagar de uma vez
+#define W25Q_CAIXA_PRETA_ADDR 0xFFF000 // Último setor de 4KB do chip (16MB)
 #define DELAY 5
-#define BUFFER_SIZE 32     // 32 logs * 8 bytes = 256 bytes (1 P�gina da Flash)
+#define PAGE_PROGRAM_MAX 256 // bytes
+#define LOGS_PER_PAGE(nome_struct_t) (PAGE_PROGRAM_MAX/sizeof(nome_struct_t))   // Quantos logs podem ser gravados de uma vez em 256 bytes (1 P�gina da Flash)
 #define TIME_OUT 2
+
 
 static SPI_HandleTypeDef* w25q_spi;
 static TIM_HandleTypeDef* w25q_timer;
@@ -28,14 +32,17 @@ W25Q_State_t sensor_state = IDLE;
 static volatile u8 timer_ready_flag = 0;
 static u8 w25q_cs = 0;
 u32 currentAddr = 0;
-static LogData_t bufferRAM[] = {0};
+static LogData_t bufferRAM[LOGS_PER_PAGE(LogData_t)] = {0};
 static u32 bufferIndex = 0;
 
 
 static void w25qWritePage(void);
 static void w25q_WriteEnable(void);
+static void recuperarEnderecoW25Q(void);
 static void w25q_WaitForWriteEnd(void);
-static void w25q_EraseSector(uint32_t SectorAddr);
+static void w25q_EraseBlock64K(uint32_t BlockAddr);
+//static void w25q_EraseSector(uint32_t SectorAddr);
+
 
 
 #if defined(W25Q_CS_PORT) && defined(W25Q_CS_PIN)
@@ -49,6 +56,7 @@ void w25qInit(SPI_HandleTypeDef *hspi, TIM_HandleTypeDef *htim, u8 W25Q_CS){
 	w25q_spi = hspi;
 	w25q_timer = htim;
 	w25q_cs = W25Q_CS;
+	recuperarEnderecoW25Q();
 }
 
 
@@ -92,11 +100,12 @@ void visualizarLogsW25Q(void) {
         // Formatação Abreviada (Estilo Opção 2) alinhada para a tabela
         // Usamos %5.1f para forçar um alinhamento mínimo e manter a tabela reta
         snprintf(buffer_saida, sizeof(buffer_saida),
-            "%02d:%02d:%02d | A:%5.1f V:%5.1f P:%6.1f | %-12s | %s",
+            "%02d:%02d:%02d | A:%5.1f V:%5.1f P:%6.1f T:V: %5.1f | %-12s | %s",
             leitura.hora, leitura.min, leitura.seg,
             leitura.altitude,
             leitura.velocidade,
             leitura.pressao,
+			leitura.temperatura,
             PRINT_ESTADO[st],
             barra_grafica);
 
@@ -132,6 +141,7 @@ void adicionarLogW25Q(RTC_HandleTypeDef* hrtc_log, DadosVoo_t *dadosVoo) {
     bufferRAM[bufferIndex].min = sTime.Minutes;
     bufferRAM[bufferIndex].seg = sTime.Seconds;
     bufferRAM[bufferIndex].pressao = dadosVoo->pressaoAtual;
+    bufferRAM[bufferIndex].temperatura = dadosVoo->temperaturaAtual;
     bufferRAM[bufferIndex].altitude = dadosVoo->altitudeAtual;
     bufferRAM[bufferIndex].velocidade = dadosVoo->velocidadeAtual;
     bufferRAM[bufferIndex].estado = dadosVoo->estadoAtual;
@@ -139,7 +149,7 @@ void adicionarLogW25Q(RTC_HandleTypeDef* hrtc_log, DadosVoo_t *dadosVoo) {
     bufferIndex++;
 
     // Se encheu a p�gina (32 registros), grava na Flash
-    if (bufferIndex >= BUFFER_SIZE) {
+    if (bufferIndex >= LOGS_PER_PAGE(LogData_t)) {
     	w25qWritePage();
     	bufferIndex = 0; // Reseta buffer
     }
@@ -213,11 +223,12 @@ void visualizarUltimoLogW25Q(void){
         // Formatação Abreviada (Estilo Opção 2) alinhada para a tabela
         // Usamos %5.1f para forçar um alinhamento mínimo e manter a tabela reta
         snprintf(buffer_saida, sizeof(buffer_saida),
-            "%02d:%02d:%02d | A:%5.1f V:%5.1f P:%6.1f | %-12s | %s",
+            "%02d:%02d:%02d | A:%5.1f V:%5.1f P:%6.1f T:%5.1f | %-12s | %s",
             leitura.hora, leitura.min, leitura.seg,
             leitura.altitude,
             leitura.velocidade,
             leitura.pressao,
+            leitura.temperatura, // <-- Faltava essa linha!
             PRINT_ESTADO[st],
             barra_grafica);
 
@@ -238,29 +249,39 @@ void visualizarUltimoLogW25Q(void){
 
 void apagarLogsW25Q(void) {
     char buffer_msg[64];
+    printlnLYellow("\r\n--- INICIANDO LIMPEZA DA CAIXA PRETA (BLOCOS DE 64KB) ---");
 
-    printlnLYellow("\r\n--- INICIANDO LIMPEZA DA CAIXA PRETA ---");
+    for (uint32_t addr = 0; addr < LIMIT; addr += W25Q_BLOCK_SIZE) {
 
-    // O LIMIT é aquela sua variável global que define o fim da gravação (ex: 2MB, 4MB...)
-    // O loop pula de 4096 em 4096 bytes, apagando setor por setor.
-    for (uint32_t addr = 0; addr < LIMIT; addr += W25Q_SECTOR_SIZE) {
+        w25q_EraseBlock64K(addr);
 
-        w25q_EraseSector(addr);
-
-        // A cada 16 setores apagados (64 KB), printa um aviso na tela para você saber que não travou
-        if ((addr % (W25Q_SECTOR_SIZE * 16)) == 0) {
-            snprintf(buffer_msg, sizeof(buffer_msg), "Apagando... Endereco: 0x%06lX\r\n", addr);
-            printLYellow("%s", buffer_msg);
-        }
+        // Printa o progresso a cada 1 bloco apagado
+        snprintf(buffer_msg, sizeof(buffer_msg), "Apagando... Endereco: 0x%06lX\r\n", addr);
+        printLYellow("%s", buffer_msg);
     }
 
-    // Zera o ponteiro de gravação para o próximo voo começar do zero
     currentAddr = 0;
-
     printlnLGreen("--- LIMPEZA CONCLUIDA! PRONTO PARA VOO ---\r\n");
 }
 
-static void w25q_EraseSector(uint32_t SectorAddr) {
+static void w25q_EraseBlock64K(uint32_t BlockAddr) {
+    w25q_WriteEnable();
+
+    w25q_CS_LOW();
+    uint8_t cmd[4];
+    cmd[0] = 0xD8; // Instrução Block Erase (64 KB)
+    cmd[1] = (BlockAddr >> 16) & 0xFF;
+    cmd[2] = (BlockAddr >> 8) & 0xFF;
+    cmd[3] = BlockAddr & 0xFF;
+
+    HAL_SPI_Transmit(w25q_spi, cmd, 4, TIME_OUT);
+    w25q_CS_HIGH();
+
+    w25q_WaitForWriteEnd(); // O chip demora de 150ms a 200ms para apagar o bloco
+}
+
+/*
+static void w25q_EraseSector(uint32_t SectorAddr) {  // Apaga todo um setor do W25Q
     w25q_WriteEnable(); // Sempre chamar antes!
 
     w25q_CS_LOW();
@@ -275,16 +296,17 @@ static void w25q_EraseSector(uint32_t SectorAddr) {
 
     w25q_WaitForWriteEnd(); // Espera os ~45ms para o chip limpar o setor
 }
+*/
 
-void apagarTudoW25Q(void){
+void apagarTudoW25Q(void){ // Apaga todo o W25Q.
 	w25q_WriteEnable(); // Sempre chamar antes!
 
-	    w25q_CS_LOW();
-	    uint8_t cmd = 0xC7; // Instrução Chip Erase
-	    HAL_SPI_Transmit(w25q_spi, &cmd, 1, TIME_OUT);
-	    w25q_CS_HIGH();
+	w25q_CS_LOW();
+	uint8_t cmd = 0xC7; // Instrução Chip Erase
+	HAL_SPI_Transmit(w25q_spi, &cmd, 1, TIME_OUT);
+	w25q_CS_HIGH();
 
-	    w25q_WaitForWriteEnd();
+	w25q_WaitForWriteEnd();
 }
 
 // Ativa a permissão de escrita/apagamento na memória
@@ -307,3 +329,70 @@ static void w25q_WaitForWriteEnd(void) {
     } while ((status & 0x01) == 0x01); // Fica preso aqui enquanto o bit 0 (BUSY) for 1
     w25q_CS_HIGH();
 }
+
+
+static void recuperarEnderecoW25Q(void) {
+    LogData_t leitura;
+    uint32_t addr = 0;
+    char buffer_msg[64];
+
+    printlnLYellow("\r\n--- ESCANEANDO MEMORIA PARA INICIALIZACAO/RECUPERACAO DE SESSAO ---");
+
+    // A leitura pula de 256 em 256 bytes, tornando a busca por 4MB quase instantânea.
+    while (addr < LIMIT) {
+        w25q_CS_LOW();
+        uint8_t cmd[4] = { 0x03, (addr >> 16) & 0xFF, (addr >> 8) & 0xFF, addr & 0xFF };
+        HAL_SPI_Transmit(w25q_spi, cmd, 4, TIME_OUT);
+
+        // Lê apenas a primeira struct (32 bytes) da página
+        HAL_SPI_Receive(w25q_spi, (uint8_t*)&leitura, sizeof(LogData_t), TIME_OUT);
+        w25q_CS_HIGH();
+
+        // Se a hora for 0xFF, significa que a página inteira está virgem
+        if (leitura.hora == 0xFF) {
+            break;
+        }
+
+        addr += PAGE_PROGRAM_MAX; // Avança para a próxima página de 256 bytes
+    }
+
+    currentAddr = addr;
+
+    snprintf(buffer_msg, sizeof(buffer_msg), "Ponteiro restaurado no endereco: 0x%06lX\r\n", currentAddr);
+    printLGreen("%s", buffer_msg);
+}
+
+
+void salvarCaixaPretaW25Q(float pressao_ref, uint32_t status) {
+    CaixaPreta_t cfg = {pressao_ref, status};
+    uint8_t cmd_erase[4] = {0x20, (W25Q_CAIXA_PRETA_ADDR >> 16) & 0xFF, (W25Q_CAIXA_PRETA_ADDR >> 8) & 0xFF, W25Q_CAIXA_PRETA_ADDR & 0xFF};
+    uint8_t cmd_write[4] = {0x02, (W25Q_CAIXA_PRETA_ADDR >> 16) & 0xFF, (W25Q_CAIXA_PRETA_ADDR >> 8) & 0xFF, W25Q_CAIXA_PRETA_ADDR & 0xFF};
+
+    // 1. Apaga o último setor
+    w25q_WriteEnable();
+    w25q_CS_LOW();
+    HAL_SPI_Transmit(w25q_spi, cmd_erase, 4, TIME_OUT);
+    w25q_CS_HIGH();
+    w25q_WaitForWriteEnd();
+
+    // 2. Grava a nova struct
+    w25q_WriteEnable();
+    w25q_CS_LOW();
+    HAL_SPI_Transmit(w25q_spi, cmd_write, 4, TIME_OUT);
+    HAL_SPI_Transmit(w25q_spi, (uint8_t*)&cfg, sizeof(CaixaPreta_t), TIME_OUT);
+    w25q_CS_HIGH();
+    w25q_WaitForWriteEnd();
+}
+
+CaixaPreta_t lerCaixaPretaW25Q(void) {
+    CaixaPreta_t cfg = {1013.25f, 0}; // Valores padrão de segurança
+    uint8_t cmd_read[4] = {0x03, (W25Q_CAIXA_PRETA_ADDR >> 16) & 0xFF, (W25Q_CAIXA_PRETA_ADDR >> 8) & 0xFF, W25Q_CAIXA_PRETA_ADDR & 0xFF};
+
+    w25q_CS_LOW();
+    HAL_SPI_Transmit(w25q_spi, cmd_read, 4, TIME_OUT);
+    HAL_SPI_Receive(w25q_spi, (uint8_t*)&cfg, sizeof(CaixaPreta_t), TIME_OUT);
+    w25q_CS_HIGH();
+
+    return cfg;
+}
+

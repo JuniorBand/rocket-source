@@ -15,16 +15,17 @@
 #include "config_voo.h"
 
 
-//#if defined(PROJETO_USA_RTC)
-
 typedef struct {
     u8 hora;
     u8 min;
     u8 seg;
-    float altitude;
+    u8 _pad_align_;          // +1 byte (Para alinhar o float em 32 bits para o ARM)
     float pressao;
+    float temperatura;
+    float altitude;
     float velocidade;
     EstadoSistema estado;
+    uint32_t _reserved[2];  // +2 bytes (Gordura para forçar a struct a ter exatos 32 bytes)
 } LogData_t;
 
 typedef enum {
@@ -44,21 +45,17 @@ void visualizarUltimoLogW25Q(void);
 void pararGravacaoW25Q(void);
 void apagarLogsW25Q(void);
 void apagarTudoW25Q(void);
+void salvarCaixaPretaW25Q(float pressao_ref, uint32_t status);
+CaixaPreta_t lerCaixaPretaW25Q(void);
 
 extern u32 currentAddr;
-#define LIMIT 0x8700 //CORRIGIR
+
+// 4 MB garante cerca de 34 minutos de telemetria contínua a 100Hz.
+#define LIMIT 0x400000 // 4 Megabytes (O tamanho máximo do módulo é de 16 Megabytes)
 #define MAGIC_NUMBER_SIRIUS 0xAA55AA55 // Assinatura hexadecimal para validar se o bloco de memória realmente contém
 // dados legítimos do voo. Evita que leituras de sensores corrompidas
 // (que gerem 0xFFFFFFFF por acaso) enganem o sistema de varredura.
 
 
-
-/*
-#else
-
-    #error  PROJETO_USA_RTC nao foi declarado! Por favor, declare-o no main.h para reconhecer o uso do RTC.
-
-#endif
-*/
 
 #endif  /* W25Q_H */
