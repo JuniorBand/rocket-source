@@ -15,13 +15,13 @@
 extern "C" {
 #endif
 
-#include "stm32f4xx_hal.h"
-#include "config_voo.h"
+#include <stm32f4xx_hal.h>
+#include <config_voo.h>
 
 // Verifica qual chip o CubeIDE está compilando e ajusta a Flash
 #if defined(STM32F411xE) || defined(STM32F401xE)
     // Se for o F411 ou o F401 grande (512 KB)
-	#warning "Atenção: o chip é o STM32F411 ou STM32F401 de 512 KB!"
+	#pragma message("Atenção: o chip é o STM32F411 ou STM32F401 de 512 KB!")
     #define ENDERECO_FLASH_ALVO 0x08060000
     #define SETOR_FLASH_ALVO    FLASH_SECTOR_7
 
@@ -29,7 +29,7 @@ extern "C" {
 
 #elif defined(STM32F401xC)
     // Se for o F401 padrão (256 KB)
-	#warning "Atenção: o chip é o STM32F401 de 256 KB!"
+	#pragma message("Atenção: o chip é o STM32F401 de 256 KB!")
     #define ENDERECO_FLASH_ALVO 0x08020000
     #define SETOR_FLASH_ALVO    FLASH_SECTOR_5
 

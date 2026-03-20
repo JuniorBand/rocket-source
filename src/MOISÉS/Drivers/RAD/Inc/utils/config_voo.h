@@ -4,17 +4,57 @@
   * @date 	 14 de mar. de 2026
   * @author  Júnior Bandeira
   * @brief   Header do arquivo que configura a parte complexa do código do foguete.
+  * @brief   PAINEL DE CONTROLE DA MISSÃO
+  * Ative ou desative as macros abaixo para alterar o comportamento
+  * do firmware em tempo de compilação.
   ******************************************************************************
 */
 
 #ifndef CONFIG_VOO_H
 #define CONFIG_VOO_H
 
-#include "stm32f4xx_hal.h"
-#include "utils.h"
-#include "lkf.h"
+#include <stm32f4xx_hal.h>
+#include <utils.h>
+#include <lkf.h>
+#include <main.h>
 
-//typedef struct MS5611_s MS5611_t;
+
+// ==============================================================================
+// 1. ESTADO DA MISSÃO (Comente para MODO BANCADA, Descomente para MODO VOO)
+// ==============================================================================
+//#define EM_VOO
+// ^ Se definido: Desliga prints USB para economizar CPU, ativa rotinas rígidas.
+
+// ==============================================================================
+// 2. HARDWARE DE ARMAZENAMENTO (Comente para usar a Flash interna do STM32)
+// ==============================================================================
+#define USE_W25Q
+// ^ Se definido: Roteia o sistema de arquivos para o chip externo W25Q.
+// Caso contrario, utiliza a flash nativa da placa.
+
+// ==============================================================================
+// 3. PARÂMETROS FÍSICOS DA MISSÃO
+// ==============================================================================
+// ATENÇÃO: Use o f para forçar o compilador entender que é float.
+// O Tempo de amostragem do sistema (10 ms = 0.01 segundos). Fundamental para o Kalman.
+#define DT 0.01f
+
+#ifdef EM_VOO
+	#define ALTITUDE_LANCAMENTO  5.0f
+	#define ALTITUDE_POUSO       3.0f
+	#define DESCIDA_MINIMA       10.0f
+	#define META_APOGEU          300.0f // Defina a meta em metros aqui
+	#define DESVIO_MIN           1.0f
+	#define TEMPO_MAX_VOO_MS     80000  // Tempo máximo de voo para parar de gravar
+#else // EM_SOLO: testes em bancada
+	#define ALTITUDE_LANCAMENTO  2.0f
+	#define ALTITUDE_POUSO       0.0f
+	#define DESCIDA_MINIMA       2.0f
+	#define META_APOGEU          10.0f  // Meta menor para testes
+	#define DESVIO_MIN           0.0f
+	#define TEMPO_MAX_VOO_MS     1000000
+#endif
+
 
 // Máquina de Estados do Voo
 typedef enum EstadoSistema_s {
@@ -30,16 +70,16 @@ typedef enum EstadoSistema_s {
 // Dados Estat�sticos do Voo
 typedef struct SeguroVoo_s {
     float altitude_maxima;
-    uint32_t tempo_inicio_ms;
+    u32 tempo_inicio_ms;
 } SeguroVoo_t;
 
 typedef struct CaixaPreta_s {
     float pressao_solo;         // Guarda a pressao do chao para nao perder o "zero" da altitude
-    uint32_t status_voo;        // Flag magica: 0xAA55AA55 (Voando) ou 0 (Parado)
+    u32 status_voo;        // Flag magica: 0xAA55AA55 (Voando) ou 0 (Parado)
 } CaixaPreta_t;
 
 typedef struct DadosVoo_s {
-	uint32_t magicNumber;
+	u32 magicNumber;
     float pressaoAtual;          // Press�o em hPa
     float temperaturaAtual;
     float altitudeAtual;         // Altitude em Metros
@@ -52,11 +92,19 @@ extern SeguroVoo_t seguroVoo;
 extern DadosVoo_t dadosVoo;
 extern CaixaPreta_t caixaPreta;
 extern RTC_HandleTypeDef hrtc;
-extern volatile uint8_t flagTickVoo;
+extern volatile u8 flagTickVoo;
 
-void beep(int duracao, int vezes);
+void beep(u32 duracao, u8 vezes);
 void setupVoo(SPI_HandleTypeDef *hspi_sensor, TIM_HandleTypeDef *htim);
 void processarLogicaVoo(void);
 
+#if defined(BUZZER_PORT) && defined(BUZZER_PIN)
+	// Se o seu buzzer liga com LOW (Lógica Invertida / Active-Low)
+	#pragma message("BUZZER_PORT e BUZZER_PIN foram definidos.")
+	#define BUZZER_ON()  writePinLow(BUZZER_PORT, BUZZER_PIN)
+	#define BUZZER_OFF() writePinHigh(BUZZER_PORT, BUZZER_PIN)
+#else
+	#error "BUZZER_PORT e BUZZER_PIN não foram definidos no main.h!"
+#endif
 
 #endif /* CONFIG_VOO_H */

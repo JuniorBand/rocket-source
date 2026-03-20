@@ -15,9 +15,18 @@
 extern "C" {    
 #endif
 
+#include <stdio.h> // Inclui incondicionalmente para não dar warning
 
-#include "main.h"
-#include "stm32f4xx_hal.h"
+#if defined(USE_HALDRIVER) || defined(STM32F4xx) || defined(STM32F401xC) || defined(STM32F411xE) || defined(STM32F401xE)
+	#include <stm32f4xx_hal.h>
+	#include <main.h>
+#elif defined(ARDUINO)
+	#include <Arduino.h>
+	#pragma GCC warning "Inclua o header do seu main file se quiser, cuidado com dependência circular de headers."
+	//#include <header_do_seu_main.h> // Inclua se quiser, cuidado com dependência circular de headers.
+#endif
+
+
 
 #ifdef STM32F411xE
 	#pragma message("Você está utilizando o STM32F411.")
@@ -71,7 +80,7 @@ extern "C" {
 #define LBLUE    "\x1b[94m"
 #define LMAGENTA "\x1b[95m"
 #define LCYAN    "\x1b[96m"
-#define LWHITE     "\x1b[97m"
+#define LWHITE   "\x1b[97m"
 
 #define RESET   "\x1b[0m" // Para resetar a cor
 
@@ -136,49 +145,47 @@ extern "C" {
 
     #if defined(ESP32) || defined(ESP8266) || defined(ARDUINO_ARCH_STM32)
       // ==============================================================================
-      // MACROS PARA PRINTF (Texto Formatado ex: %d, %.2f)
-      // Requer suporte de arquitetura 32 bits (ESP32, ESP8266, STM32)
-      // Uso: printfYellow("Velocidade: %.2f km/h", velH);
+      // MACROS PARA PRINTF (Texto Formatado ex: %d, %.2f) - BLINDADO
       // ==============================================================================
 
-      #define printfReset(fmt, ...)   do { Serial.printf(RESET fmt RESET, ##__VA_ARGS__); } while(0)
-      #define printfBlack(fmt, ...)   do { Serial.printf(BLACK fmt RESET, ##__VA_ARGS__); } while(0)
-      #define printfRed(fmt, ...)     do { Serial.printf(RED fmt RESET, ##__VA_ARGS__); } while(0)
-      #define printfGreen(fmt, ...)   do { Serial.printf(GREEN fmt RESET, ##__VA_ARGS__); } while(0)
-      #define printfYellow(fmt, ...)  do { Serial.printf(YELLOW fmt RESET, ##__VA_ARGS__); } while(0)
-      #define printfBlue(fmt, ...)    do { Serial.printf(BLUE fmt RESET, ##__VA_ARGS__); } while(0)
-      #define printfMagenta(fmt, ...) do { Serial.printf(MAGENTA fmt RESET, ##__VA_ARGS__); } while(0)
-      #define printfCyan(fmt, ...)    do { Serial.printf(CYAN fmt RESET, ##__VA_ARGS__); } while(0)
-      #define printfWhite(fmt, ...)   do { Serial.printf(WHITE fmt RESET, ##__VA_ARGS__); } while(0)
+      #define printfReset(fmt, ...)   do { Serial.print(RESET); Serial.printf(fmt, ##__VA_ARGS__); Serial.print(RESET); } while(0)
+      #define printfBlack(fmt, ...)   do { Serial.print(BLACK); Serial.printf(fmt, ##__VA_ARGS__); Serial.print(RESET); } while(0)
+      #define printfRed(fmt, ...)     do { Serial.print(RED); Serial.printf(fmt, ##__VA_ARGS__); Serial.print(RESET); } while(0)
+      #define printfGreen(fmt, ...)   do { Serial.print(GREEN); Serial.printf(fmt, ##__VA_ARGS__); Serial.print(RESET); } while(0)
+      #define printfYellow(fmt, ...)  do { Serial.print(YELLOW); Serial.printf(fmt, ##__VA_ARGS__); Serial.print(RESET); } while(0)
+      #define printfBlue(fmt, ...)    do { Serial.print(BLUE); Serial.printf(fmt, ##__VA_ARGS__); Serial.print(RESET); } while(0)
+      #define printfMagenta(fmt, ...) do { Serial.print(MAGENTA); Serial.printf(fmt, ##__VA_ARGS__); Serial.print(RESET); } while(0)
+      #define printfCyan(fmt, ...)    do { Serial.print(CYAN); Serial.printf(fmt, ##__VA_ARGS__); Serial.print(RESET); } while(0)
+      #define printfWhite(fmt, ...)   do { Serial.print(WHITE); Serial.printf(fmt, ##__VA_ARGS__); Serial.print(RESET); } while(0)
 
-      #define printfLBlack(fmt, ...)   do { Serial.printf(LBLACK fmt RESET, ##__VA_ARGS__); } while(0)
-      #define printfLRed(fmt, ...)    do { Serial.printf(LRED fmt RESET, ##__VA_ARGS__); } while(0)
-      #define printfLGreen(fmt, ...)  do { Serial.printf(LGREEN fmt RESET, ##__VA_ARGS__); } while(0)
-      #define printfLYellow(fmt, ...) do { Serial.printf(LYELLOW fmt RESET, ##__VA_ARGS__); } while(0)
-      #define printfLBlue(fmt, ...)   do { Serial.printf(LBLUE fmt RESET, ##__VA_ARGS__); } while(0)
-      #define printfLMagenta(fmt, ...) do { Serial.printf(LMAGENTA fmt RESET, ##__VA_ARGS__); } while(0)
-      #define printfLCyan(fmt, ...)   do { Serial.printf(LCYAN fmt RESET, ##__VA_ARGS__); } while(0)
-      #define printfLWhite(fmt, ...)   do { Serial.printf(LWHITE fmt RESET, ##__VA_ARGS__); } while(0)
+      #define printfLBlack(fmt, ...)  do { Serial.print(LBLACK); Serial.printf(fmt, ##__VA_ARGS__); Serial.print(RESET); } while(0)
+      #define printfLRed(fmt, ...)    do { Serial.print(LRED); Serial.printf(fmt, ##__VA_ARGS__); Serial.print(RESET); } while(0)
+      #define printfLGreen(fmt, ...)  do { Serial.print(LGREEN); Serial.printf(fmt, ##__VA_ARGS__); Serial.print(RESET); } while(0)
+      #define printfLYellow(fmt, ...) do { Serial.print(LYELLOW); Serial.printf(fmt, ##__VA_ARGS__); Serial.print(RESET); } while(0)
+      #define printfLBlue(fmt, ...)   do { Serial.print(LBLUE); Serial.printf(fmt, ##__VA_ARGS__); Serial.print(RESET); } while(0)
+      #define printfLMagenta(fmt, ...) do { Serial.print(LMAGENTA); Serial.printf(fmt, ##__VA_ARGS__); Serial.print(RESET); } while(0)
+      #define printfLCyan(fmt, ...)   do { Serial.print(LCYAN); Serial.printf(fmt, ##__VA_ARGS__); Serial.print(RESET); } while(0)
+      #define printfLWhite(fmt, ...)  do { Serial.print(LWHITE); Serial.printf(fmt, ##__VA_ARGS__); Serial.print(RESET); } while(0)
 
 
-      #define printflnReset(fmt, ...)   do { Serial.printf(RESET fmt RESET, ##__VA_ARGS__);  Serial.println(RESET); } while(0)
-      #define printflnBlack(fmt, ...)   do { Serial.printf(BLACK fmt RESET, ##__VA_ARGS__);  Serial.println(RESET); } while(0)
-      #define printflnRed(fmt, ...)     do { Serial.printf(RED fmt RESET, ##__VA_ARGS__);  Serial.println(RESET); } while(0)
-      #define printflnGreen(fmt, ...)   do { Serial.printf(GREEN fmt RESET, ##__VA_ARGS__);  Serial.println(RESET); } while(0)
-      #define printflnYellow(fmt, ...)  do { Serial.printf(YELLOW fmt RESET, ##__VA_ARGS__);  Serial.println(RESET); } while(0)
-      #define printflnBlue(fmt, ...)    do { Serial.printf(BLUE fmt RESET, ##__VA_ARGS__);  Serial.println(RESET); } while(0)
-      #define printflnMagenta(fmt, ...) do { Serial.printf(MAGENTA fmt RESET, ##__VA_ARGS__);  Serial.println(RESET); } while(0)
-      #define printflnCyan(fmt, ...)    do { Serial.printf(CYAN fmt RESET, ##__VA_ARGS__);  Serial.println(RESET); } while(0)
-      #define printflnWhite(fmt, ...)   do { Serial.printf(WHITE fmt RESET, ##__VA_ARGS__);  Serial.println(RESET); } while(0)
+      #define printflnReset(fmt, ...)   do { Serial.print(RESET); Serial.printf(fmt, ##__VA_ARGS__); Serial.println(RESET); } while(0)
+      #define printflnBlack(fmt, ...)   do { Serial.print(BLACK); Serial.printf(fmt, ##__VA_ARGS__); Serial.println(RESET); } while(0)
+      #define printflnRed(fmt, ...)     do { Serial.print(RED); Serial.printf(fmt, ##__VA_ARGS__); Serial.println(RESET); } while(0)
+      #define printflnGreen(fmt, ...)   do { Serial.print(GREEN); Serial.printf(fmt, ##__VA_ARGS__); Serial.println(RESET); } while(0)
+      #define printflnYellow(fmt, ...)  do { Serial.print(YELLOW); Serial.printf(fmt, ##__VA_ARGS__); Serial.println(RESET); } while(0)
+      #define printflnBlue(fmt, ...)    do { Serial.print(BLUE); Serial.printf(fmt, ##__VA_ARGS__); Serial.println(RESET); } while(0)
+      #define printflnMagenta(fmt, ...) do { Serial.print(MAGENTA); Serial.printf(fmt, ##__VA_ARGS__); Serial.println(RESET); } while(0)
+      #define printflnCyan(fmt, ...)    do { Serial.print(CYAN); Serial.printf(fmt, ##__VA_ARGS__); Serial.println(RESET); } while(0)
+      #define printflnWhite(fmt, ...)   do { Serial.print(WHITE); Serial.printf(fmt, ##__VA_ARGS__); Serial.println(RESET); } while(0)
 
-      #define printflnLBlack(fmt, ...)   do { Serial.printf(LBLACK fmt RESET, ##__VA_ARGS__);  Serial.println(RESET); } while(0)
-      #define printflnLRed(fmt, ...)    do { Serial.printf(LRED fmt RESET, ##__VA_ARGS__);  Serial.println(RESET); } while(0)
-      #define printflnLGreen(fmt, ...)  do { Serial.printf(LGREEN fmt RESET, ##__VA_ARGS__);  Serial.println(RESET); } while(0)
-      #define printflnLYellow(fmt, ...) do { Serial.printf(LYELLOW fmt RESET, ##__VA_ARGS__);  Serial.println(RESET); } while(0)
-      #define printflnLBlue(fmt, ...)   do { Serial.printf(LBLUE fmt RESET, ##__VA_ARGS__);  Serial.println(RESET); } while(0)
-      #define printflnLMagenta(fmt, ...) do { Serial.printf(LMAGENTA fmt RESET, ##__VA_ARGS__);  Serial.println(RESET); } while(0)
-      #define printflnLCyan(fmt, ...)   do { Serial.printf(LCYAN fmt RESET, ##__VA_ARGS__);  Serial.println(RESET); } while(0)
-      #define printflnLWhite(fmt, ...)   do { Serial.printf(LWHITE fmt RESET, ##__VA_ARGS__);  Serial.println(RESET); } while(0)
+      #define printflnLBlack(fmt, ...)  do { Serial.print(LBLACK); Serial.printf(fmt, ##__VA_ARGS__); Serial.println(RESET); } while(0)
+      #define printflnLRed(fmt, ...)    do { Serial.print(LRED); Serial.printf(fmt, ##__VA_ARGS__); Serial.println(RESET); } while(0)
+      #define printflnLGreen(fmt, ...)  do { Serial.print(LGREEN); Serial.printf(fmt, ##__VA_ARGS__); Serial.println(RESET); } while(0)
+      #define printflnLYellow(fmt, ...) do { Serial.print(LYELLOW); Serial.printf(fmt, ##__VA_ARGS__); Serial.println(RESET); } while(0)
+      #define printflnLBlue(fmt, ...)   do { Serial.print(LBLUE); Serial.printf(fmt, ##__VA_ARGS__); Serial.println(RESET); } while(0)
+      #define printflnLMagenta(fmt, ...) do { Serial.print(LMAGENTA); Serial.printf(fmt, ##__VA_ARGS__); Serial.println(RESET); } while(0)
+      #define printflnLCyan(fmt, ...)   do { Serial.print(LCYAN); Serial.printf(fmt, ##__VA_ARGS__); Serial.println(RESET); } while(0)
+      #define printflnLWhite(fmt, ...)  do { Serial.print(LWHITE); Serial.printf(fmt, ##__VA_ARGS__); Serial.println(RESET); } while(0)
 
     #else
       #pragma message("Aviso: Macros de cor printf/printfln desativadas (Arquitetura não suporta Serial.printf nativo). Use print/println.")
@@ -282,43 +289,48 @@ extern "C" {
 		#define printDebug(var, ...)    do { printf(var, ##__VA_ARGS__); } while(0)
 		#define printlnDebug(var, ...)  do { printf(var "\r\n", ##__VA_ARGS__); } while(0)
 
+            // ==============================================================================
+            // MACROS BLINDADAS (STM32/HAL nativo)
+            // ==============================================================================
 
-			#define printReset(var, ...)   do { printf(RESET var RESET, ##__VA_ARGS__); } while(0)
-			#define printBlack(var, ...)   do { printf(BLACK var RESET, ##__VA_ARGS__); } while(0)
-			#define printRed(var, ...)     do { printf(RED var RESET, ##__VA_ARGS__); } while(0)
-			#define printGreen(var, ...)   do { printf(GREEN var RESET, ##__VA_ARGS__); } while(0)
-			#define printYellow(var, ...)  do { printf(YELLOW var RESET, ##__VA_ARGS__); } while(0)
-			#define printBlue(var, ...)    do { printf(BLUE var RESET, ##__VA_ARGS__); } while(0)
-			#define printMagenta(var, ...) do { printf(MAGENTA var RESET, ##__VA_ARGS__); } while(0)
-			#define printCyan(var, ...)    do { printf(CYAN var RESET, ##__VA_ARGS__); } while(0)
-			#define printWhite(var, ...)   do { printf(WHITE var RESET, ##__VA_ARGS__); } while(0)
-			#define printLBlack(var, ...)  do { printf(LBLACK var RESET, ##__VA_ARGS__); } while(0)
-			#define printLRed(var, ...)    do { printf(LRED var RESET, ##__VA_ARGS__); } while(0)
-			#define printLGreen(var, ...)  do { printf(LGREEN var RESET, ##__VA_ARGS__); } while(0)
-			#define printLYellow(var, ...) do { printf(LYELLOW var RESET, ##__VA_ARGS__); } while(0)
-			#define printLBlue(var, ...)   do { printf(LBLUE var RESET, ##__VA_ARGS__); } while(0)
-			#define printLMagenta(var, ...) do { printf(LMAGENTA var RESET, ##__VA_ARGS__); } while(0)
-			#define printLCyan(var, ...)    do { printf(LCYAN var RESET, ##__VA_ARGS__); } while(0)
-			#define printLWhite(var, ...)   do { printf(LWHITE var RESET, ##__VA_ARGS__); } while(0)
+			#define printReset(var, ...)    do { printf("%s", RESET); printf(var, ##__VA_ARGS__); printf("%s", RESET); } while(0)
+			#define printBlack(var, ...)    do { printf("%s", BLACK); printf(var, ##__VA_ARGS__); printf("%s", RESET); } while(0)
+			#define printRed(var, ...)      do { printf("%s", RED); printf(var, ##__VA_ARGS__); printf("%s", RESET); } while(0)
+			#define printGreen(var, ...)    do { printf("%s", GREEN); printf(var, ##__VA_ARGS__); printf("%s", RESET); } while(0)
+			#define printYellow(var, ...)   do { printf("%s", YELLOW); printf(var, ##__VA_ARGS__); printf("%s", RESET); } while(0)
+			#define printBlue(var, ...)     do { printf("%s", BLUE); printf(var, ##__VA_ARGS__); printf("%s", RESET); } while(0)
+			#define printMagenta(var, ...)  do { printf("%s", MAGENTA); printf(var, ##__VA_ARGS__); printf("%s", RESET); } while(0)
+			#define printCyan(var, ...)     do { printf("%s", CYAN); printf(var, ##__VA_ARGS__); printf("%s", RESET); } while(0)
+			#define printWhite(var, ...)    do { printf("%s", WHITE); printf(var, ##__VA_ARGS__); printf("%s", RESET); } while(0)
+
+			#define printLBlack(var, ...)   do { printf("%s", LBLACK); printf(var, ##__VA_ARGS__); printf("%s", RESET); } while(0)
+			#define printLRed(var, ...)     do { printf("%s", LRED); printf(var, ##__VA_ARGS__); printf("%s", RESET); } while(0)
+			#define printLGreen(var, ...)   do { printf("%s", LGREEN); printf(var, ##__VA_ARGS__); printf("%s", RESET); } while(0)
+			#define printLYellow(var, ...)  do { printf("%s", LYELLOW); printf(var, ##__VA_ARGS__); printf("%s", RESET); } while(0)
+			#define printLBlue(var, ...)    do { printf("%s", LBLUE); printf(var, ##__VA_ARGS__); printf("%s", RESET); } while(0)
+			#define printLMagenta(var, ...) do { printf("%s", LMAGENTA); printf(var, ##__VA_ARGS__); printf("%s", RESET); } while(0)
+			#define printLCyan(var, ...)    do { printf("%s", LCYAN); printf(var, ##__VA_ARGS__); printf("%s", RESET); } while(0)
+			#define printLWhite(var, ...)   do { printf("%s", LWHITE); printf(var, ##__VA_ARGS__); printf("%s", RESET); } while(0)
 
 
-			#define printlnReset(var, ...)  do { printf(RESET var RESET "\r\n", ##__VA_ARGS__); } while(0)
-			#define printlnBlack(var, ...)  do { printf(BLACK var RESET "\r\n", ##__VA_ARGS__); } while(0)
-			#define printlnRed(var, ...)    do { printf(RED var RESET "\r\n", ##__VA_ARGS__); } while(0)
-			#define printlnGreen(var, ...)  do { printf(GREEN var RESET "\r\n", ##__VA_ARGS__); } while(0)
-			#define printlnYellow(var, ...) do { printf(YELLOW var RESET "\r\n", ##__VA_ARGS__); } while(0)
-			#define printlnBlue(var, ...)   do { printf(BLUE var RESET "\r\n", ##__VA_ARGS__); } while(0)
-			#define printlnMagenta(var, ...) do { printf(MAGENTA var RESET "\r\n", ##__VA_ARGS__); } while(0)
-			#define printlnCyan(var, ...)    do { printf(CYAN var RESET "\r\n", ##__VA_ARGS__); } while(0)
-			#define printlnWhite(var, ...)   do { printf(WHITE var RESET "\r\n", ##__VA_ARGS__); } while(0)
-			#define printlnLBlack(var, ...)  do { printf(LBLACK var RESET "\r\n", ##__VA_ARGS__); } while(0)
-			#define printlnLRed(var, ...)    do { printf(LRED var RESET "\r\n", ##__VA_ARGS__); } while(0)
-			#define printlnLGreen(var, ...)   do { printf(LGREEN var RESET "\r\n", ##__VA_ARGS__); } while(0)
-			#define printlnLYellow(var, ...)  do { printf(LYELLOW var RESET "\r\n", ##__VA_ARGS__); } while(0)
-			#define printlnLBlue(var, ...)   do { printf(LBLUE var RESET "\r\n", ##__VA_ARGS__); } while(0)
-			#define printlnLMagenta(var, ...) do { printf(LMAGENTA var RESET "\r\n", ##__VA_ARGS__); } while(0)
-			#define printlnLCyan(var, ...)    do { printf(LCYAN var RESET "\r\n", ##__VA_ARGS__); } while(0)
-			#define printlnLWhite(var, ...)   do { printf(LWHITE var RESET "\r\n", ##__VA_ARGS__); } while(0)
+			#define printlnReset(var, ...)    do { printf("%s", RESET); printf(var, ##__VA_ARGS__); printf("%s\r\n", RESET); } while(0)
+			#define printlnBlack(var, ...)    do { printf("%s", BLACK); printf(var, ##__VA_ARGS__); printf("%s\r\n", RESET); } while(0)
+			#define printlnRed(var, ...)      do { printf("%s", RED); printf(var, ##__VA_ARGS__); printf("%s\r\n", RESET); } while(0)
+			#define printlnGreen(var, ...)    do { printf("%s", GREEN); printf(var, ##__VA_ARGS__); printf("%s\r\n", RESET); } while(0)
+			#define printlnYellow(var, ...)   do { printf("%s", YELLOW); printf(var, ##__VA_ARGS__); printf("%s\r\n", RESET); } while(0)
+			#define printlnBlue(var, ...)     do { printf("%s", BLUE); printf(var, ##__VA_ARGS__); printf("%s\r\n", RESET); } while(0)
+			#define printlnMagenta(var, ...)  do { printf("%s", MAGENTA); printf(var, ##__VA_ARGS__); printf("%s\r\n", RESET); } while(0)
+			#define printlnCyan(var, ...)     do { printf("%s", CYAN); printf(var, ##__VA_ARGS__); printf("%s\r\n", RESET); } while(0)
+			#define printlnWhite(var, ...)    do { printf("%s", WHITE); printf(var, ##__VA_ARGS__); printf("%s\r\n", RESET); } while(0)
+
+			#define printlnLBlack(var, ...)   do { printf("%s", LBLACK); printf(var, ##__VA_ARGS__); printf("%s\r\n", RESET); } while(0)
+			#define printlnLRed(var, ...)     do { printf("%s", LRED); printf(var, ##__VA_ARGS__); printf("%s\r\n", RESET); } while(0)
+			#define printlnLGreen(var, ...)   do { printf("%s", LGREEN); printf(var, ##__VA_ARGS__); printf("%s\r\n", RESET); } while(0)
+			#define printlnLYellow(var, ...)  do { printf("%s", LYELLOW); printf(var, ##__VA_ARGS__); printf("%s\r\n", RESET); } while(0)
+			#define printlnLBlue(var, ...)    do { printf("%s", LBLUE); printf(var, ##__VA_ARGS__); printf("%s\r\n", RESET); } while(0)
+			#define printlnLMagenta(var, ...) do { printf("%s", LMAGENTA); printf(var, ##__VA_ARGS__); printf("%s\r\n", RESET); } while(0)
+			#define printlnLCyan(var, ...)    do { printf("%s", LCYAN); printf(var, ##__VA_ARGS__); printf("%s\r\n", RESET); } while(0)
+			#define printlnLWhite(var, ...)   do { printf("%s", LWHITE); printf(var, ##__VA_ARGS__); printf("%s\r\n", RESET); } while(0)
 	#else
 		#pragma message("Em MODO_VOO: prints via USB desativados.")
 		// ==============================================================================

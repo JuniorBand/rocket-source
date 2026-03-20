@@ -7,9 +7,6 @@
   ******************************************************************************
 */
 
-//Descrição do utils.h AQUI!
-
-
 #ifndef UTILS_H
 #define UTILS_H
 
@@ -36,20 +33,20 @@ typedef unsigned long ulong;
 
 #elif defined(STM32F411xE) || defined(STM32F401xC) || defined(STM32F401xE) || defined(USE_HAL_DRIVER)
     // Se as flags da ST existirem, inclui a HAL
-    #include "stm32f4xx_hal.h"
+    #include <stm32f4xx_hal.h>
 
     // Como estamos no STM32, incluímos o main.h para ter acesso aos #define de pinos.
     // Lembre-se: O main.h não deve dar include em arquivos como lkf.h ou config_voo.h!
-    #include "main.h"
+    #include <main.h>
 
 	#ifdef STM32F411xE
 		#pragma message("Você está utilizando o STM32F411.")
-		#include "stm32f411xe.h"
+		#include <stm32f411xe.h>
 	#endif
 
 	#ifdef STM32F401xC
 		#pragma message("Você está utilizando o STM32F401.")
-		#include "stm32f401xc.h"
+		#include <stm32f401xc.h>
 	#endif
 
 #else
@@ -58,7 +55,7 @@ typedef unsigned long ulong;
 
 
 
-#include "prints.h" // Inclui o prints.h para usar as macros de print, mesmo que sejam "vazias" em MODO_VOO.
+#include <prints.h> // Inclui o prints.h para usar as macros de print, mesmo que sejam "vazias" em MODO_VOO.
 
 #pragma message("Você está usando o utils.h para facilitar a sua vida ;)")
 
@@ -67,20 +64,100 @@ typedef unsigned long ulong;
 //#define MODO_VOO // Descomente para o compilador apagar qualquer print do código se em voo, economizando processamento e memória.
 
 
-// Transforma de um u8 *ptr em um número 32-bit, 16-bit e 24-bit, singned ou unsigned.
-#define TRANSF_32_BIT_LITEND(ptr, n) ((i32)ptr[n + 3] << 24 | (i32)ptr[n + 2] << 16 | (i32)ptr[n + 1] << 8 | ptr[n])
-#define TRANSF_16_BIT_LITEND(ptr, n)  ((i16)ptr[n + 1] << 8 | ptr[n])
-#define TRANSF_U32_BIT_LITEND(ptr, n) ((u32)ptr[n + 3] << 24 | (u32)ptr[n + 2] << 16 | (u32)ptr[n + 1] << 8 | ptr[n])
-#define TRANSF_U16_BIT_LITEND(ptr, n)  ((u16)ptr[n + 1] << 8 | ptr[n])
-#define TRANSF_24_BIT_LITEND(ptr, n) ((i32)ptr[n + 2] << 16 | (i32)ptr[n + 1] << 8 | ptr[n])
-#define TRANSF_U24_BIT_LITEND(ptr, n) ((u32)ptr[n + 2] << 16 | (u32)ptr[n + 1] << 8 | ptr[n])
+// ==============================================================================
+// CONVERSÕES DE ENDIANNESS (LITTLE ENDIAN)
+// ==============================================================================
 
-#define TRANSF_32_BIT_BIGEND(ptr, n) ((i32)ptr[n] << 24 | (i32)ptr[n + 1] << 16 | (i32)ptr[n + 2] << 8 | ptr[n + 3])
+// --- Unsigned (Sem Sinal) ---
+static inline u16 transf_u16_litend(const u8 *ptr, u32 n) {
+    return (u16)((ptr[n + 1] << 8) | ptr[n]);
+}
+
+static inline u32 transf_u24_litend(const u8 *ptr, u32 n) {
+    return (u32)((ptr[n + 2] << 16) | (ptr[n + 1] << 8) | ptr[n]);
+}
+
+static inline u32 transf_u32_litend(const u8 *ptr, u32 n) {
+    return (u32)((ptr[n + 3] << 24) | (ptr[n + 2] << 16) | (ptr[n + 1] << 8) | ptr[n]);
+}
+
+// --- Signed (Com Sinal) ---
+static inline i16 transf_16_litend(const u8 *ptr, u32 n) {
+    return (i16)((ptr[n + 1] << 8) | ptr[n]);
+}
+
+static inline i32 transf_24_litend(const u8 *ptr, u32 n) {
+    i32 val = (i32)((ptr[n + 2] << 16) | (ptr[n + 1] << 8) | ptr[n]);
+    // Extensão de sinal: Se o 24º bit for 1 (negativo), preenche o resto com 1s.
+    if (val & 0x00800000) {
+        val |= 0xFF000000;
+    }
+    return val;
+}
+
+static inline i32 transf_32_litend(const u8 *ptr, u32 n) {
+    return (i32)((ptr[n + 3] << 24) | (ptr[n + 2] << 16) | (ptr[n + 1] << 8) | ptr[n]);
+}
+
+
+// ==============================================================================
+// CONVERSÕES DE ENDIANNESS (BIG ENDIAN)
+// ==============================================================================
+
+// --- Unsigned (Sem Sinal) ---
+static inline u16 transf_u16_bigend(const u8 *ptr, u32 n) {
+    return (u16)((ptr[n] << 8) | ptr[n + 1]);
+}
+
+static inline u32 transf_u24_bigend(const u8 *ptr, u32 n) {
+    return (u32)((ptr[n] << 16) | (ptr[n + 1] << 8) | ptr[n + 2]);
+}
+
+static inline u32 transf_u32_bigend(const u8 *ptr, u32 n) {
+    return (u32)((ptr[n] << 24) | (ptr[n + 1] << 16) | (ptr[n + 2] << 8) | ptr[n + 3]);
+}
+
+// --- Signed (Com Sinal) ---
+static inline i16 transf_16_bigend(const u8 *ptr, u32 n) {
+    return (i16)((ptr[n] << 8) | ptr[n + 1]);
+}
+
+static inline i32 transf_24_bigend(const u8 *ptr, u32 n) {
+    i32 val = (i32)((ptr[n] << 16) | (ptr[n + 1] << 8) | ptr[n + 2]);
+    // Extensão de sinal: Se o 24º bit for 1 (negativo), preenche o resto com 1s.
+    if (val & 0x00800000) {
+        val |= 0xFF000000;
+    }
+    return val;
+}
+
+static inline i32 transf_32_bigend(const u8 *ptr, u32 n) {
+    return (i32)((ptr[n] << 24) | (ptr[n + 1] << 16) | (ptr[n + 2] << 8) | ptr[n + 3]);
+}
+
+
+
+/* Antigas:
+// Transforma de um u8 *ptr em um número 32-bit, 16-bit e 24-bit, singned ou unsigned.
+
+
+// -> Little Endian:
+#define TRANSF_16_BIT_LITEND(ptr, n)  ((i16)ptr[n + 1] << 8 | ptr[n])
+#define TRANSF_24_BIT_LITEND(ptr, n) ((i32)ptr[n + 2] << 16 | (i32)ptr[n + 1] << 8 | ptr[n])
+#define TRANSF_32_BIT_LITEND(ptr, n) ((i32)ptr[n + 3] << 24 | (i32)ptr[n + 2] << 16 | (i32)ptr[n + 1] << 8 | ptr[n])
+#define TRANSF_U16_BIT_LITEND(ptr, n)  ((u16)ptr[n + 1] << 8 | ptr[n])
+#define TRANSF_U24_BIT_LITEND(ptr, n) ((u32)ptr[n + 2] << 16 | (u32)ptr[n + 1] << 8 | ptr[n])
+#define TRANSF_U32_BIT_LITEND(ptr, n) ((u32)ptr[n + 3] << 24 | (u32)ptr[n + 2] << 16 | (u32)ptr[n + 1] << 8 | ptr[n])
+
+// -> Big Endian:
 #define TRANSF_16_BIT_BIGEND(ptr, n)  ((i16)ptr[n] << 8 | ptr[n + 1])
-#define TRANSF_U32_BIT_BIGEND(ptr, n) ((u32)ptr[n] << 24 | (u32)ptr[n + 1] << 16 | (u32)ptr[n + 2] << 8 | ptr[n + 3])
-#define TRANSF_U16_BIT_BIGEND(ptr, n)  ((u16)ptr[n] << 8 | ptr[n + 1])
 #define TRANSF_24_BIT_BIGEND(ptr, n) ((i32)ptr[n] << 16 | (i32)ptr[n + 1] << 8 | ptr[n + 2])
+#define TRANSF_32_BIT_BIGEND(ptr, n) ((i32)ptr[n] << 24 | (i32)ptr[n + 1] << 16 | (i32)ptr[n + 2] << 8 | ptr[n + 3])
+#define TRANSF_U16_BIT_BIGEND(ptr, n)  ((u16)ptr[n] << 8 | ptr[n + 1])
 #define TRANSF_U24_BIT_BIGEND(ptr, n) ((u32)ptr[n] << 16 | (u32)ptr[n + 1] << 8 | ptr[n + 2])
+#define TRANSF_U32_BIT_BIGEND(ptr, n) ((u32)ptr[n] << 24 | (u32)ptr[n + 1] << 16 | (u32)ptr[n + 2] << 8 | ptr[n + 3])
+*/
+
 
 #if !defined(MIN) || !defined(MAX)
 	#define MIN(a, b) (a < b) ? a : b
@@ -138,12 +215,29 @@ extern const char* ESTADO[];
 	#define GPIO_TOGGLE(PORT, PIN_MASK)     ((PORT)->ODR ^= (PIN_MASK))
 	#define GPIO_READ(PORT, PIN_MASK)       (((PORT)->IDR & (PIN_MASK)) != 0)
 	*/
+
+	// ==============================================================================
+	// CONTROLE DO LED DA PLACA (PC13 - Lógica Invertida)
+	// ==============================================================================
+	static inline void acenderLedPlaca(void) {
+		writePinLow(GPIOC, GPIO_PIN_13);
+	}
+
+	static inline void apagarLedPlaca(void) {
+		writePinHigh(GPIOC, GPIO_PIN_13);
+	}
+
+	static inline void piscarLedPlaca(void) {
+		togglePin(GPIOC, GPIO_PIN_13);
+	}
+
+
 #else
+	#pragma message("MODO: EM_VOO.")
 	#define writePinHigh(...)  do { } while(0)
 	#define writePinLow(...)   do { } while(0)
 	#define togglePin(...)     do { } while(0)
 	#define readPin(...)       do { } while(0)
-	#define chamarComandosFlashSTM(comando) do { } while(0)
 #endif
 
 #endif /* GPIO UTILITIES */

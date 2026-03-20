@@ -10,23 +10,22 @@
 #ifndef W25Q_H
 #define W25Q_H
 
-#include "stm32f4xx_hal.h"
-#include "utils.h"
-#include "config_voo.h"
+#include <stm32f4xx_hal.h>
+#include <utils.h>
+#include <config_voo.h>
 
 
 typedef struct {
     u8 hora;
     u8 min;
     u8 seg;
-    u8 _pad_align_;          // +1 byte (Para alinhar o float em 32 bits para o ARM)
+    u8 estado;          // Fazer casting para (u8) no enum EstadoSistema do .c
     float pressao;
     float temperatura;
     float altitude;
     float velocidade;
-    EstadoSistema estado;
-    uint32_t _reserved[2];  // +2 bytes (Gordura para forçar a struct a ter exatos 32 bytes)
-} LogData_t;
+    u32 _reserved[3];  // Padding para preencher 32 bytes.
+} __attribute__((aligned(4))) LogData_t; // Total: 32 bytes.
 
 typedef enum {
     IDLE,

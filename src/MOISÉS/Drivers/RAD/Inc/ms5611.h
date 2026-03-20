@@ -26,9 +26,9 @@
 #ifndef MS5611_H
 #define MS5611_H
 
-#include "utils.h"
-#include "stm32f4xx_hal.h"
-#include "config_voo.h"
+#include <utils.h>
+#include <stm32f4xx_hal.h>
+#include <config_voo.h>
 
 typedef struct MS5611_s {
     u16 c[8];              // Coeficientes C0-C7 lidos da PROM interna do sensor

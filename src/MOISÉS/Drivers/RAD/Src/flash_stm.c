@@ -7,8 +7,8 @@
 */
 
 #include <flash_stm.h>
-#include "utils.h"
-#include "usb_com.h"
+#include <utils.h>
+#include <usb_com.h>
 
 
 // Descobre quantas structs inteiras cabem nesses 128 KB
@@ -61,7 +61,7 @@ void salvarDado(DadosVoo_t *dados) {
     // O __attribute__((aligned(4))) no .h garante que a divisão seja exata.
     u16 tamanho_em_words = (u16) ((sizeof(DadosVoo_t) + 3) / 4);
 
-    for (int i = 0; i < tamanho_em_words; i++) {
+    for (u32 i = 0; i < tamanho_em_words; i++) {
         // Calcula o offset de memória para cada palavra de 32 bits
         u32 endereco_atual = (u32)&flash_ptr[index] + (i * 4);
 
@@ -80,7 +80,7 @@ void printFlash(void) {
     printYellow("%s", buffer_usb);
     HAL_Delay(50); // Dá um tempo para o terminal do PC processar
 
-    int index = 0;
+    u32 index = 0;
 
     printLGreen("--- DADOS RECUPERADOS ---\r\n");
     while (index < max_structs) {
@@ -99,7 +99,7 @@ void printFlash(void) {
         }
 
         snprintf(buffer_usb, sizeof(buffer_usb),
-        		"[%d] P:%.1f T:%.1f A:%.1f V:%.1f E:%d\r\n",
+        		"[%lu] P:%.1f T:%.1f A:%.1f V:%.1f E:%u\r\n",
                  index,
                  flash_ptr[index].pressaoAtual,
                  flash_ptr[index].temperaturaAtual,
@@ -114,7 +114,7 @@ void printFlash(void) {
         index++;
     }
 
-    snprintf(buffer_usb, sizeof(buffer_usb), "--- FIM DA LEITURA (Total: %d registros) ---\r\n\r\n", index);
+    snprintf(buffer_usb, sizeof(buffer_usb), "--- FIM DA LEITURA (Total: %lu registros) ---\r\n\r\n", index);
     printYellow("%s", buffer_usb);
 }
 
