@@ -1,11 +1,54 @@
 /*
   ******************************************************************************
   * @file    usb_com.c
-  * @date 	 4 de mar. de 2026
-  * @author  Júnior Bandeira
-  * @brief   Source code de utilidades para o USB.
+  * @date    4 de mar. de 2026
+  * @author  Junior Bandeira
+  * @brief   Gerenciador de Comunicacao USB CDC (Estacao Solo)
   ******************************************************************************
 */
+
+/* ==============================================================================
+ * MANUAL DE OPERACAO USB
+ * ==============================================================================
+ *
+ * DESCRICAO GERAL:
+ * Este arquivo atua como o despachante de comandos (Command Dispatcher)
+ * entre o foguete (STM32) e a Estacao Solo (PC). Ele intercepta
+ * caracteres enviados via terminal serial e executa as rotinas de
+ * leitura, gravacao ou simulacao correspondentes.
+ *
+ * ARQUITETURA NON-BLOCKING (SAFE IRQ):
+ * Para evitar o travamento do microcontrolador durante a comunicacao,
+ * este modulo utiliza uma arquitetura baseada em FLAG:
+ * A funcao 'interruptUSB' roda dentro da interrupcao de hardware,
+ * apenas salva o caractere na variavel 'comando_pendente' e encerra
+ * imediatamente. A execucao pesada (prints e flash) ocorre de forma
+ * segura no laco principal atraves da 'processarComandosUSB()'.
+ *
+ * FUNCOES PRINCIPAIS:
+ * - _write()             : Sobrescreve a syscall nativa do GCC,
+ * redirecionando qualquer 'printf' para o USB.
+ * Possui trava de seguranca (timeout) caso o
+ * cabo seja desconectado no meio do voo.
+ * - interruptUSB()       : Callback de recepcao (IRQ). Levanta a flag.
+ * - processarComandosUSB(): Funcao de pooling. Roteia para o switch correto.
+ *
+ * COMANDOS SUPORTADOS (COM 'USE_W25Q' DEFINIDO - MODO VOO):
+ * [V] - Visualizar Todos: Imprime a tabela de telemetria completa.
+ * [U] - Ultimo Log      : Imprime apenas o bloco mais recente do voo.
+ * [I] - Idle / Parar    : Interrompe a gravacao e descarrega o buffer RAM.
+ * [A] - Apagar Logs     : Limpeza Inteligente (Smart Erase) dos blocos usados.
+ * [$] - Apagar TUDO     : Formata o chip W25Q inteiro (Processo Critico).
+ * [S] - Simular Ao Vivo : Executa o SITL e printa a fisica no terminal (10Hz).
+ * [M] - Mock de Memoria : Gera um voo falso e salva fisicamente na W25Q (100Hz).
+ *
+ * COMANDOS SUPORTADOS (FLASH NATIVA DO STM32 - MODO BANCADA):
+ * [L] - Log Teste (UP)  : Grava dado ficticio de subida e liga LED PC13.
+ * [D] - Log Teste (DOWN): Grava dado ficticio de descida e apaga LED PC13.
+ * [R] - Read (Ler)      : Imprime todos os logs armazenados na flash interna.
+ * [C] - Clear (Apagar)  : Apaga a pagina alocada da flash interna.
+ * ==============================================================================
+ */
 
 #include <usb_com.h>
 #include <config_voo.h>
@@ -109,6 +152,20 @@ static void chamarComandos(u8 comando){
 			apagarTudoW25Q();
 
 			break;
+		case 'S': // Simular voo ao vivo (SITL) sem gravar na flash
+			printlnLBlue("\r\nLigando LED do PC13!\r\n");
+			acenderLedPlaca();
+			printlnLGreen("\r\nComando { %c } - Simular Voo Ao Vivo (SITL) Sem Gravar Na Flash.\r\n", comando);
+			simularVooAoVivoUSB();
+			apagarLedPlaca();
+			break;
+		case 'M': // Gerar voo mock na memoria W25Q sem usar sensor MS5611
+					printlnLBlue("\r\nLigando LED do PC13!\r\n");
+					acenderLedPlaca();
+					printlnLGreen("\r\nComando { %c } - Gerar Voo Simulado Com W25Q.\r\n", comando);
+					gerarVooSimuladoW25Q();
+					apagarLedPlaca();
+					break;
 		default:
 			printlnLRed("\r\nComando desconhecido: { %c }.\r\n", comando);
 			break;

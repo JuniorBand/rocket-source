@@ -2,8 +2,8 @@
   ******************************************************************************
   * @file    w25q.h
   * @date 	 3 de mar. de 2026
-  * @author  Júnior Bandeira
-  * @brief   Header do driver para o flash W25Q128.
+  * @author  Junior Bandeira
+  * @brief   Header do driver para o Flash W25Q128.
   ******************************************************************************
 */
 
@@ -46,6 +46,7 @@ void apagarLogsW25Q(void);
 void apagarTudoW25Q(void);
 void salvarCaixaPretaW25Q(float pressao_ref, uint32_t status);
 CaixaPreta_t lerCaixaPretaW25Q(void);
+void gerarVooSimuladoW25Q(void);
 
 extern u32 currentAddr;
 

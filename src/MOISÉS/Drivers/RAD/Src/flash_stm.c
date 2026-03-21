@@ -1,10 +1,47 @@
 /*
   ******************************************************************************
   * @file    flash_stm.c
-  * @author  Júnior Bandeira
-  * @brief   Source code do driver para controlar a flash nativa dos STM32F411/STM32F401
+  * @date    20 de mar. de 2026
+  * @author  Junior Bandeira
+  * @brief   Driver de armazenamento nativo (Internal Flash) para STM32F4xx
   ******************************************************************************
 */
+
+/* ==============================================================================
+ * MANUAL DA ARQUITETURA DE MEMORIA INTERNA (FLASH NATIVA)
+ * ==============================================================================
+ *
+ * DESCRICAO GERAL:
+ * Este modulo transforma um setor isolado da memoria Flash nativa do STM32
+ * (geralmente o ultimo setor) em uma "Caixa Preta" ou EEPROM Virtual.
+ * Ele eh utilizado principalmente para testes de bancada (Mock) ou como
+ * backup de seguranca caso o modulo externo W25Q falhe.
+ *
+ * ESTRATEGIA DE BUSCA E GRAVACAO (O PONTEIRO FANTASMA):
+ * Como a memoria Flash nativa nao permite sobrescrever dados sem apagar o
+ * setor inteiro (que leva muito tempo), os dados sao gravados sequencialmente.
+ * O algoritmo descobre onde gravar lendo a memoria ate encontrar uma Word
+ * (32 bits) com o valor 0xFFFFFFFF, que eh o estado natural de uma Flash virgem.
+ *
+ * VALIDACAO DE INTEGRIDADE (MAGIC NUMBER):
+ * Para garantir que o microcontrolador nao leia "lixo" de memoria de voos
+ * passados corrompidos, toda struct salva recebe uma assinatura digital
+ * (MAGIC_NUMBER_SIRIUS). Na hora da leitura, se o dado existir mas nao tiver
+ * essa exata assinatura, o sistema o ignora e pula para o proximo.
+ *
+ * MECANISMOS DE PROTECAO (FAIL-SAFES DA HAL):
+ * A gravacao na Flash exige uma tensao estavel. Se houver um pico no sistema,
+ * a controladora de memoria do ARM trava e gera flags silenciosas de erro
+ * (PGAERR, PGPERR, etc). Este driver executa uma limpeza profilatica
+ * dessas flags antes de qualquer operacao, garantindo que o STM32 nunca
+ * aborte uma gravacao por causa de um erro fantasma anterior.
+ *
+ * FUNCOES PRINCIPAIS:
+ * - salvarDado()       : Varre o setor, acha o espaco vazio, assina e grava.
+ * - printFlash()       : Le os dados validados e manda pro USB com delays anti-gargalo.
+ * - apagarCaixaPreta() : Destroi o setor inteiro, zerando a memoria para o proximo teste.
+ * ==============================================================================
+ */
 
 #include <flash_stm.h>
 #include <utils.h>

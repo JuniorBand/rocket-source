@@ -1,12 +1,43 @@
 /*
   ******************************************************************************
   * @file    prints.h
-  * @date 	 10 de mar. de 2026
-  * @author  Júnior Bandeira
-  * @brief   Utilidades para prints.
+  * @date    10 de mar. de 2026
+  * @author  Junior Bandeira
+  * @brief   Sistema de Telemetria Visual e Log Condicional (ANSI Colors)
   ******************************************************************************
 */
 
+/* ==============================================================================
+ * MANUAL DA ARQUITETURA DE PRINTS (TELEMETRIA VISUAL)
+ * ==============================================================================
+ *
+ * DESCRICAO GERAL:
+ * Este header eh o responsavel por criar a interface de Estacao Solo diretamente
+ * no terminal serial, utilizando codigos de escape ANSI para colorir textos e
+ * formatar variaveis de forma dinamica (printf-style).
+ *
+ * OTIMIZACAO ZERO-OVERHEAD (MODO VOO):
+ * A funcionalidade mais critica deste arquivo eh o isolamento de hardware.
+ * Printar strings via USB/UART custa milhares de ciclos de clock do ARM Cortex.
+ * Quando a macro 'EM_VOO' eh definida, TODAS as dezenas de funcoes de print
+ * deste arquivo sao redefinidas silenciosamente para 'do {} while(0)'.
+ * Isso instrui o compilador GCC a apagar completamente os logs do codigo binario
+ * final, garantindo que o foguete dedique 100% da sua CPU para a fisica e
+ * para os sensores durante a queda livre.
+ *
+ * CROSS-PLATFORM COMPATIBILITY:
+ * O arquivo detecta automaticamente a arquitetura do compilador. Ele suporta:
+ * - STM32 (HAL via _write redirecionado)
+ * - ESP32 / ESP8266 (Serial.printf nativo)
+ * - Arduino AVR 8-bits (Serial.print classico com tratativa para o macro F())
+ *
+ * REGRAS DE USO:
+ * - printCor(): Imprime na mesma linha (ex: printLCyan).
+ * - printlnCor(): Imprime com quebra de linha automatica no final (\r\n).
+ * - O padrao aceita argumentos infinitos como o printf nativo do C.
+ * Exemplo: printlnLYellow("Altitude: %.2f m | Velocidade: %.2f", alt, vel);
+ * ==============================================================================
+ */
 #ifndef PRINTS_H
 #define PRINTS_H
 
@@ -90,8 +121,8 @@ extern "C" {
 #ifdef ARDUINO
 	#pragma message("Utilizando Arduino.h.")
 
-  #ifndef MODO_VOO // Do utils.h
-    #pragma message("Em MODO_SOLO: prints via USB ativados.")
+  #ifndef EM_VOO // Do utils.h
+    #pragma message("Em EM_SOLO: prints via USB ativados.")
     // ==============================================================================
     // MACROS PARA PRINT (Texto Simples, sem formatadores %d, %f)
     // ==============================================================================
@@ -192,7 +223,7 @@ extern "C" {
     #endif
   
   #else
-    #pragma message("Em MODO_VOO: prints via USB desativados.")
+    #pragma message("Em EM_VOO: prints via USB desativados.")
     // ==============================================================================
     // [ MODO VOO ] - O compilador substitui as funções por NADA (Zero overhead)
     // ==============================================================================
@@ -332,7 +363,7 @@ extern "C" {
 			#define printlnLCyan(var, ...)    do { printf("%s", LCYAN); printf(var, ##__VA_ARGS__); printf("%s\r\n", RESET); } while(0)
 			#define printlnLWhite(var, ...)   do { printf("%s", LWHITE); printf(var, ##__VA_ARGS__); printf("%s\r\n", RESET); } while(0)
 	#else
-		#pragma message("Em MODO_VOO: prints via USB desativados.")
+		#pragma message("Em EM_VOO: prints via USB desativados.")
 		// ==============================================================================
 		// [ MODO VOO ] - O compilador substitui as funções por NADA (Zero overhead)
 		// ==============================================================================

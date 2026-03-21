@@ -2,7 +2,7 @@
   ******************************************************************************
   * @file    lkf.h
   * @date 	 3 de mar. de 2026
-  * @authors  Levi e Júnior Bandeira
+  * @authors  Levi e Junior Bandeira
   * @brief   Header do Linear Kalman Filter para STM32.
   ******************************************************************************
 */

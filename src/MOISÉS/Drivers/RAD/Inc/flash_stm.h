@@ -2,8 +2,8 @@
   ******************************************************************************
   * @file    flash_stm.h
   * @date 	 3 de mar. de 2026
-  * @author  Júnior Bandeira
-  * @brief   Header do driver para o controlar a flash nativa dos STM32F411/STM32F401
+  * @author  Junior Bandeira
+  * @brief   Header do driver de armazenamento nativo (Internal Flash) para STM32F4xx
   ******************************************************************************
 */
 

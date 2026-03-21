@@ -2,7 +2,7 @@
   ******************************************************************************
   * @file    config_voo.c
   * @date 	 14 de mar. de 2026
-  * @author  Júnior Bandeira
+  * @author  Junior Bandeira
   * @brief   Source code que configura a parte complexa do código do foguete.
   ******************************************************************************
 */
@@ -388,4 +388,112 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 	return;
 }
 
+// ============================================================================
+// FUNCAO DE SIMULACAO (MOCK) DIRETO PARA O TERMINAL SERIAL (SEM W25Q)
+// ============================================================================
+void simularVooAoVivoUSB(void) {
+    char buffer_saida[256];
+    char barra_grafica[55];
 
+    // Banner Inicial 100% simetrico (118 caracteres de largura exatos)
+    printlnLCyan("\r\n======================================================================================================================");
+    printlnLYellow("                                      SIMULACAO DE VOO (SITL) - TEMPO REAL                                      ");
+    printlnLCyan("======================================================================================================================");
+    printlnLMagenta("   HORA   |        TELEMETRIA (A/V/P/T)           |     STATUS     | GRAFICO (# = 10m)                                ");
+    printlnLCyan("----------|---------------------------------------|----------------|--------------------------------------------------");
+
+    float alt = 0.0f;
+    float vel = 0.0f;
+    u8 estado = 1; // 1 = ESTADO_PRONTO
+    u32 tempo_ms = 0;
+    u8 h = 14, m = 30, s = 0;
+    u32 marca_pouso = 0;
+
+    // --- RASTREADORES DE ESTATISTICAS ---
+    float alt_max = 0.0f;
+    u32 tempo_decolagem = 0;
+    u32 tempo_toque_chao = 0;
+
+    for (int step = 0; step < 12000; step++) {
+
+        // --- FISICA BASICA DO FOGUETE ---
+        if (estado == 1 && tempo_ms > 1000) {
+            estado = 2; // Decola apos 1s
+            tempo_decolagem = tempo_ms; // <-- Marca a hora que saiu do chao
+        } else if (estado == 2) {
+            if (tempo_ms < 3000) vel += 45.0f * 0.01f; // Motor
+            else vel -= 9.81f * 0.01f; // Gravidade
+            if (vel <= 0.0f && alt > 50.0f) estado = 3; // Apogeu
+        } else if (estado == 3) {
+            estado = 4; vel = -15.0f; // Paraquedas abre
+        } else if (estado == 4) {
+            vel += ( (-8.0f - vel) * 0.05f ); // Arrasto do paraquedas
+            if (alt <= 0.0f) {
+                estado = 5; vel = 0.0f; alt = 0.0f;
+                tempo_toque_chao = tempo_ms; // <-- Marca a hora exata do pouso
+            }
+        }
+
+        alt += vel * 0.01f;
+        if (alt < 0) alt = 0.0f;
+
+        // Atualiza a altitude maxima da simulacao
+        if (alt > alt_max) alt_max = alt;
+
+        float pressao = 1013.25f * powf(1.0f - (alt / 44330.0f), 5.255f);
+        float temp = 30.0f - (alt * 0.0065f);
+
+        tempo_ms += 10;
+        if (tempo_ms % 1000 == 0) {
+            s++;
+            if (s > 59) { s = 0; m++; }
+            if (m > 59) { m = 0; h++; }
+        }
+
+        // --- IMPRESSAO NO TERMINAL A CADA 100ms ---
+        if (tempo_ms % 100 == 0) {
+
+            int num_barras = (int)(alt / 10.0f);
+            if (num_barras > 50) num_barras = 50;
+            if (num_barras < 0) num_barras = 0;
+
+            memset(barra_grafica, 0, sizeof(barra_grafica));
+            for (int i = 0; i < num_barras; i++) barra_grafica[i] = '#';
+
+            u8 st = estado;
+            if (st > 6) st = 6;
+
+            snprintf(buffer_saida, sizeof(buffer_saida),
+                "%s %02d:%02d:%02d %s|"
+                "%s A:%7.1f V:%7.1f P:%6.1f T:%6.1f %s|"
+                "%s %-14s %s|"
+                "%s %s",
+                RESET, h, m, s, LMAGENTA,
+                LCYAN, alt, vel, pressao, temp, LMAGENTA,
+                LYELLOW, PRINT_ESTADO[st], LMAGENTA,
+                LGREEN, barra_grafica);
+
+            printf("%s%s\r\n", buffer_saida, RESET);
+        }
+
+        HAL_Delay(10);
+
+        // Fica imprimindo os logs no chao por 2 segundos antes de encerrar
+        if (estado == 5) {
+            if (marca_pouso == 0) marca_pouso = tempo_ms;
+            if (tempo_ms - marca_pouso > 2000) break;
+        }
+    }
+
+    // --- CALCULO DAS ESTATISTICAS E RODAPE ---
+    u32 tempo_voo_s = (tempo_toque_chao - tempo_decolagem) / 1000;
+    u32 runtime_s = tempo_ms / 1000;
+
+    printlnMagenta("======================================================================================================================");
+    snprintf(buffer_saida, sizeof(buffer_saida),
+            "ESTATISTICAS FINAIS:\r\n- Altitude Maxima: %.2f m; Tempo de Voo: %lu s; Runtime: %lu s.",
+            alt_max, tempo_voo_s, runtime_s);
+    printlnLGreen("%s", buffer_saida);
+    printlnMagenta("======================================================================================================================");
+    printlnLGreen("\r\n--- SIMULACAO CONCLUIDA. SISTEMA EM REPOUSO. ---");
+}

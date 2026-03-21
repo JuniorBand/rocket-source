@@ -1,11 +1,38 @@
 /*
   ******************************************************************************
   * @file    utils.h
-  * @date 	 3 de mar. de 2026
-  * @author  Júnior Bandeira
-  * @brief   O utils é um header facilitador/portátil ainda em desenvolvimento.
+  * @date    3 de mar. de 2026
+  * @author  Junior Bandeira
+  * @brief   Canivete Suico do RAD: Tipos estritos, Endianness e GPIO Bare Metal.
   ******************************************************************************
 */
+
+/* ==============================================================================
+ * MANUAL DA ARQUITETURA DE UTILIDADES (UTILS)
+ * ==============================================================================
+ *
+ * DESCRICAO GERAL:
+ * Este header eh a fundacao de baixo nivel do firmware. Ele garante que o
+ * codigo seja portatil e extremamente rapido, bypassando as limitacoes da HAL
+ * da ST sempre que a performance critica for exigida.
+ *
+ * 1. TIPAGEM ESTRITA (MISRA-C Style):
+ * Redefine os tipos padroes (uint8_t, int32_t) para u8, i32, etc. Isso
+ * mantem o codigo limpo, melhora a legibilidade matricial e garante que as
+ * variaveis tenham o mesmo tamanho independente do compilador.
+ *
+ * 2. ENDIANNESS CONVERTERS (Tratamento de Sensores):
+ * Sensores SPI/I2C (como o MS5611) frequentemente enviam dados "de tras
+ * pra frente" (Big Endian). Estas funcoes inlines processam bytes puros
+ * e reconstroem os numeros de 16, 24 e 32 bits usando operacoes de shift bit
+ * a bit (<<), ja lidando com a extensao do bit de sinal matematico.
+ *
+ * 3. BARE METAL GPIO (Velocidade da Luz):
+ * Em vez de usar a funcao nativa 'HAL_GPIO_WritePin' (que executa dezenas de
+ * ifs e gasta ciclos de clock), este arquivo manipula diretamente os registradores
+ * BSRR e ODR do ARM Cortex-M4. Um 'writePinHigh' custa exatamente 1 ciclo de clock.
+ * ==============================================================================
+ */
 
 #ifndef UTILS_H
 #define UTILS_H
@@ -55,13 +82,10 @@ typedef unsigned long ulong;
 
 
 
-#include <prints.h> // Inclui o prints.h para usar as macros de print, mesmo que sejam "vazias" em MODO_VOO.
+#include <prints.h> // Inclui o prints.h para usar as macros de print, mesmo que sejam "vazias" em EM_VOO.
 
 #pragma message("Você está usando o utils.h para facilitar a sua vida ;)")
 
-
-// <<<< Se MODO_VOO está comentado, assume-se: MODO_SOLO. >>>>
-//#define MODO_VOO // Descomente para o compilador apagar qualquer print do código se em voo, economizando processamento e memória.
 
 
 // ==============================================================================
@@ -167,29 +191,29 @@ static inline i32 transf_32_bigend(const u8 *ptr, u32 n) {
 extern const char* ESTADO[];
 
 
-
-#if defined(USE_HALDRIVER) || defined(STM32F4xx) || defined(STM32F401xC) || defined(STM32F411xE) || defined(STM32F401xE)
 //=============================================================================
 // <<<<<< GPIO UTILITIES >>>>>>
 //=============================================================================
 
-// OBS: PIN_MASK é 0x1UL << (PIN_NUM) e __builtin_ctz(PIN_MASK) retorna o numero do pino (ex: 5 para 0x20, 6 para 0x40)
+#if defined(USE_HALDRIVER) || defined(STM32F4xx) || defined(STM32F401xC) || defined(STM32F411xE) || defined(STM32F401xE)
 
-// Configura registradores de 2 bits (MODER, OSPEEDR, PUPDR) usando PIN_MASK
-#define GPIO_CONFIG_2BIT(PORT, PIN_MASK, REG, VALUE) \
-    ((PORT)->REG = ((PORT)->REG & ~(0x3UL << (__builtin_ctz(PIN_MASK) * 2))) | ((VALUE) << (__builtin_ctz(PIN_MASK) * 2)))
+	// OBS: PIN_MASK é 0x1UL << (PIN_NUM) e __builtin_ctz(PIN_MASK) retorna o numero do pino (ex: 5 para 0x20, 6 para 0x40)
 
-// Configura registradores de 1 bit (OTYPER) usando PIN_MASK
-#define GPIO_CONFIG_1BIT(PORT, PIN_MASK, REG, VALUE) \
-    ((PORT)->REG = ((PORT)->REG & ~(0x1UL << __builtin_ctz(PIN_MASK))) | ((VALUE) << __builtin_ctz(PIN_MASK)))
+	// Configura registradores de 2 bits (MODER, OSPEEDR, PUPDR) usando PIN_MASK
+	#define GPIO_CONFIG_2BIT(PORT, PIN_MASK, REG, VALUE) \
+		((PORT)->REG = ((PORT)->REG & ~(0x3UL << (__builtin_ctz(PIN_MASK) * 2))) | ((VALUE) << (__builtin_ctz(PIN_MASK) * 2)))
+
+	// Configura registradores de 1 bit (OTYPER) usando PIN_MASK
+	#define GPIO_CONFIG_1BIT(PORT, PIN_MASK, REG, VALUE) \
+		((PORT)->REG = ((PORT)->REG & ~(0x1UL << __builtin_ctz(PIN_MASK))) | ((VALUE) << __builtin_ctz(PIN_MASK)))
 
 
-// Macros de Operacao (Leitura / Escrita)
-// Macros otimizados para usar as definições nativas (ex: GPIO_PIN_13)
+	// Macros de Operacao (Leitura / Escrita)
+	// Macros otimizados para usar as definições nativas (ex: GPIO_PIN_13)
 
-#include "stm32f4xx_hal.h" // Necessário para reconhecer o GPIO_TypeDef
+	#include "stm32f4xx_hal.h" // Necessário para reconhecer o GPIO_TypeDef
 
-#ifndef EM_VOO
+
 
 	static inline void writePinHigh(GPIO_TypeDef *PORT, u16 PIN_MASK) {
 		PORT->BSRR = PIN_MASK;
@@ -216,29 +240,21 @@ extern const char* ESTADO[];
 	#define GPIO_READ(PORT, PIN_MASK)       (((PORT)->IDR & (PIN_MASK)) != 0)
 	*/
 
-	// ==============================================================================
-	// CONTROLE DO LED DA PLACA (PC13 - Lógica Invertida)
-	// ==============================================================================
-	static inline void acenderLedPlaca(void) {
-		writePinLow(GPIOC, GPIO_PIN_13);
-	}
-
-	static inline void apagarLedPlaca(void) {
-		writePinHigh(GPIOC, GPIO_PIN_13);
-	}
-
-	static inline void piscarLedPlaca(void) {
-		togglePin(GPIOC, GPIO_PIN_13);
-	}
-
-
-#else
-	#pragma message("MODO: EM_VOO.")
-	#define writePinHigh(...)  do { } while(0)
-	#define writePinLow(...)   do { } while(0)
-	#define togglePin(...)     do { } while(0)
-	#define readPin(...)       do { } while(0)
-#endif
+	// --------------------------------------------------------------------------
+	// CONTROLE VISUAL DE DEBUG (PC13 - Logica Invertida)
+	// --------------------------------------------------------------------------
+	#ifndef EM_VOO
+		// Em bancada, os LEDs funcionam normalmente para feedback visual
+		static inline void acenderLedPlaca(void) { writePinLow(GPIOC, GPIO_PIN_13); }
+		static inline void apagarLedPlaca(void)  { writePinHigh(GPIOC, GPIO_PIN_13); }
+		static inline void piscarLedPlaca(void)  { togglePin(GPIOC, GPIO_PIN_13); }
+	#else
+		// Em Voo, desligamos os LEDs da CPU para economizar energia, mas
+		// os pinos do MOSFET e Buzzer seguem operando intactos nas funcoes acima!
+		#define acenderLedPlaca(...) do { } while(0)
+		#define apagarLedPlaca(...)  do { } while(0)
+		#define piscarLedPlaca(...)  do { } while(0)
+	#endif
 
 #endif /* GPIO UTILITIES */
 

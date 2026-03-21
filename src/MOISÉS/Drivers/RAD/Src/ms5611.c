@@ -1,14 +1,53 @@
 /*
   ******************************************************************************
   * @file    ms5611.c
-  * @date 	 3 de mar. de 2026
-  * @author  Júnior Bandeira
-  * @brief   Source code do driver para o MS5611.
+  * @date    3 de mar. de 2026
+  * @author  Junior Bandeira
+  * @brief   Driver de alta precisao para o Barometro MS5611 (Via SPI)
   ******************************************************************************
 */
 
+/* ==============================================================================
+ * MANUAL DA ARQUITETURA DO BAROMETRO (MS5611)
+ * ==============================================================================
+ *
+ * DESCRICAO GERAL:
+ * Este driver gerencia o sensor de pressao estatica, responsavel por fornecer
+ * a altitude ao Filtro de Kalman. O MS5611 eh um sensor de 24 bits que exige
+ * compensacao matematica rigorosa de segunda ordem para operar em grandes altitudes.
+ *
+ * MAQUINA DE ESTADOS (NON-BLOCKING):
+ * O MS5611 leva cerca de 9ms para realizar uma conversao interna em alta
+ * resolucao (OSR 4096). Para nao travar o processador esperando o sensor, este
+ * driver utiliza uma Maquina de Estados sincronizada com o Timer de 10ms:
+ * 1. Tick N   : Envia comando de conversao.
+ * 2. Tick N+1 : Le o dado convertido e calcula a fisica.
+ * Isso garante que o loop principal do foguete nunca pare.
+ *
+ * MOTOR MATEMATICO (COMPENSACAO DE 2a ORDEM):
+ * A pressao lida (D1) varia com a temperatura (D2). O driver executa a
+ * "Matematica de Curva" oficial da Measurement Specialties, incluindo a
+ * correcao para baixas temperaturas (abaixo de 20C), garantindo que a
+ * altitude nao sofra deriva (drift) conforme o foguete sobe e o ar esfria.
+ *
+ * OTIMIZACAO DE BANDA:
+ * Como a temperatura ambiente nao muda tao rapido quanto a pressao no voo,
+ * este driver le a temperatura (D2) apenas 1 vez a cada 20 leituras de pressao.
+ * Isso economiza barramento SPI e foca o processamento na subida rapida.
+ * ==============================================================================
+ */
+
 #include <ms5611.h>
 #include <math.h>
+
+// ============================================================================
+// COMANDOS DO MS5611 (Datasheet - Modo OSR 4096)
+// ============================================================================
+#define MS5611_CMD_RESET       0x1E
+#define MS5611_CMD_READ_ADC    0x00
+#define MS5611_CMD_PROM_READ   0xA0
+#define MS5611_CMD_CONV_D1_OSR 0x48  // Pressao (OSR 4096)
+#define MS5611_CMD_CONV_D2_OSR 0x58  // Temperatura (OSR 4096)
 
 static SPI_HandleTypeDef *ms5611_spi;
 static TIM_HandleTypeDef *ms5611_timer;
@@ -42,7 +81,7 @@ static inline void MS5611_Select(void) { writePinLow(MS5611_PORT, MS5611_CS_PIN)
 static inline void MS5611_Unselect(void) { writePinHigh(MS5611_PORT, MS5611_CS_PIN); }
 
 static void MS5611_Reset(void) {
-    u8 res_alt = 0x1E;
+    u8 res_alt = MS5611_CMD_RESET;
     MS5611_Select();
     HAL_SPI_Transmit(ms5611_spi, &res_alt, 1, 20);
     MS5611_Unselect();
@@ -52,7 +91,7 @@ static void MS5611_Reset(void) {
 static void MS5611_Read_PROM(void) {
     u8 cmd, data[2];
     for (int i = 0; i < 8; i++) {
-        cmd = 0xA0 + (i * 2);
+        cmd = MS5611_CMD_PROM_READ + (i * 2);
         MS5611_Select();
         HAL_SPI_Transmit(ms5611_spi, &cmd, 1, 10);
         HAL_SPI_Receive(ms5611_spi, data, 2, 10);
@@ -66,7 +105,7 @@ static void MS5611_Read_PROM(void) {
 // ==============================================================================
 
 static inline void MS5611_ReadPress_Raw(void) {
-    u8 cmd = 0x00;
+    u8 cmd = MS5611_CMD_READ_ADC;
     u8 data[3];
 
     MS5611_Select();
@@ -78,7 +117,7 @@ static inline void MS5611_ReadPress_Raw(void) {
 }
 
 static inline void MS5611_ReadTemp_Raw(void) {
-    u8 cmd = 0x00;
+    u8 cmd = MS5611_CMD_READ_ADC;
     u8 data[3];
 
     MS5611_Select();
@@ -140,7 +179,7 @@ void MS5611_ReadData(void) {
 
         case MS_PEDIR_PRESSAO:
             // 1. Manda converter Pressão (D1)
-            u8 cmd_p = 0x48;
+            u8 cmd_p = MS5611_CMD_CONV_D1_OSR;
             MS5611_Select();
             HAL_SPI_Transmit(ms5611_spi, &cmd_p, 1, 10);
             MS5611_Unselect();
@@ -157,7 +196,7 @@ void MS5611_ReadData(void) {
 
             // 4. Verifica se está na hora de atualizar o D2 (Temperatura)
             if (temp_skip++ > 20) {
-                u8 cmd_t = 0x58;
+                u8 cmd_t = MS5611_CMD_CONV_D2_OSR;
                 MS5611_Select();
                 HAL_SPI_Transmit(ms5611_spi, &cmd_t, 1, 10);
                 MS5611_Unselect();

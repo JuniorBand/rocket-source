@@ -2,7 +2,7 @@
   ******************************************************************************
   * @file    config_voo.h
   * @date 	 14 de mar. de 2026
-  * @author  Júnior Bandeira
+  * @author  Junior Bandeira
   * @brief   Header do arquivo que configura a parte complexa do código do foguete.
   * @brief   PAINEL DE CONTROLE DA MISSÃO
   * Ative ou desative as macros abaixo para alterar o comportamento
@@ -45,7 +45,7 @@
 	#define DESCIDA_MINIMA       10.0f
 	#define META_APOGEU          300.0f // Defina a meta em metros aqui
 	#define DESVIO_MIN           1.0f
-	#define TEMPO_MAX_VOO_MS     80000  // Tempo máximo de voo para parar de gravar
+	#define TEMPO_MAX_VOO_MS     120000  // Tempo máximo de voo para parar de gravar
 #else // EM_SOLO: testes em bancada
 	#define ALTITUDE_LANCAMENTO  2.0f
 	#define ALTITUDE_POUSO       0.0f
@@ -97,6 +97,7 @@ extern volatile u8 flagTickVoo;
 void beep(u32 duracao, u8 vezes);
 void setupVoo(SPI_HandleTypeDef *hspi_sensor, TIM_HandleTypeDef *htim);
 void processarLogicaVoo(void);
+void simularVooAoVivoUSB(void);
 
 #if defined(BUZZER_PORT) && defined(BUZZER_PIN)
 	// Se o seu buzzer liga com LOW (Lógica Invertida / Active-Low)
