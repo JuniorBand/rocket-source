@@ -42,6 +42,8 @@
  * - C/C++ Build -> Settings -> Tool Settings -> MCU GCC Compiler -> Include paths.
  * - Clique no icone 'Add...' (papel com um + verde) no quadro "Include paths (-I)".
  * - Clique em 'Workspace...' e navegue ate selecionar a pasta 'Inc' dentro de 'RAD'
+ * e tambem adicione a pasta 'utils' dentro de 'RAD/Inc' (ou seja, adicione ambas as
+ * pastas: 'RAD/Inc' e 'RAD/Inc/utils').
  * (O caminho ficara parecido com "${workspace_loc:/${ProjName}/RAD/Inc}").
  *
  * 3. Para habilitar o printf com suporte a float:
