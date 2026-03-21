@@ -95,7 +95,7 @@ extern RTC_HandleTypeDef hrtc;
 extern volatile u8 flagTickVoo;
 
 void beep(u32 duracao, u8 vezes);
-void setupVoo(SPI_HandleTypeDef *hspi_sensor, TIM_HandleTypeDef *htim);
+void setupVoo(SPI_HandleTypeDef *hspi_mem, SPI_HandleTypeDef *hspi_sensor, TIM_HandleTypeDef *htim);
 void processarLogicaVoo(void);
 void simularVooAoVivoUSB(void);
 

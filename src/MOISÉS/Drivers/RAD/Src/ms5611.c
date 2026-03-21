@@ -77,8 +77,8 @@ void MS5611_Init(SPI_HandleTypeDef *hspi, TIM_HandleTypeDef *htim, MS5611_t *sen
     MS5611_Read_PROM();
 }
 
-static inline void MS5611_Select(void) { writePinLow(MS5611_PORT, MS5611_CS_PIN); }
-static inline void MS5611_Unselect(void) { writePinHigh(MS5611_PORT, MS5611_CS_PIN); }
+static inline void MS5611_Select(void) { writePinLow(MS5611_CS_PORT, MS5611_CS_PIN); }
+static inline void MS5611_Unselect(void) { writePinHigh(MS5611_CS_PORT, MS5611_CS_PIN); }
 
 static void MS5611_Reset(void) {
     u8 res_alt = MS5611_CMD_RESET;
