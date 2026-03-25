@@ -91,11 +91,10 @@ extern const char* PRINT_ESTADO[];
 extern SeguroVoo_t seguroVoo;
 extern DadosVoo_t dadosVoo;
 extern CaixaPreta_t caixaPreta;
-extern RTC_HandleTypeDef hrtc;
 extern volatile u8 flagTickVoo;
 
 void beep(u32 duracao, u8 vezes);
-void setupVoo(SPI_HandleTypeDef *hspi_mem, SPI_HandleTypeDef *hspi_sensor, TIM_HandleTypeDef *htim);
+void setupVoo(SPI_HandleTypeDef *hspi_mem, SPI_HandleTypeDef *hspi_sensor, TIM_HandleTypeDef *htim_ms, RTC_HandleTypeDef *hrtc_sys);
 void processarLogicaVoo(void);
 void simularVooAoVivoUSB(void);
 

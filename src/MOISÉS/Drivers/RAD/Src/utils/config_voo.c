@@ -103,7 +103,8 @@ DadosVoo_t dadosVoo = {0};
 CaixaPreta_t caixaPreta = {0};
 MS5611_t sensor = {0};
 LKF_t filtroKalman = {0};
-TIM_TypeDef *TIM_MS;
+static TIM_TypeDef *TIM_MS;
+static RTC_HandleTypeDef *HRTC_SYS_PTR;
 volatile u8 flagTickVoo = 0;
 static u8 contadorFalhasSensor = 0;
 static u8 flagGravacaoParada = 0;
@@ -116,7 +117,7 @@ static inline void registrarLogVoo(void);
 static inline void resgatarFoguete(u32 intervalo, u32 tempo_ligado, u32 *ultimo_beep);
 
 
-void setupVoo(SPI_HandleTypeDef *hspi_mem, SPI_HandleTypeDef *hspi_sensor, TIM_HandleTypeDef *htim_ms){
+void setupVoo(SPI_HandleTypeDef *hspi_mem, SPI_HandleTypeDef *hspi_sensor, TIM_HandleTypeDef *htim_ms, RTC_HandleTypeDef *hrtc_sys){
 
 	printlnLCyan("\r\n=================================================");
 	printlnLCyan("%*s%s", 9, "", "INICIANDO SISTEMA DE TELEMETRIA");
@@ -125,12 +126,14 @@ void setupVoo(SPI_HandleTypeDef *hspi_mem, SPI_HandleTypeDef *hspi_sensor, TIM_H
 
 	dadosVoo.estadoAtual = ESTADO_CALIBRACAO;
 	printlnMagenta("\r\n>>> %s DETECTADO <<<", PRINT_ESTADO[ESTADO_CALIBRACAO]);
+	acenderLedPlaca();
 
 	w25qInit(hspi_mem, htim_ms, W25Q_CS_PIN);
 	MS5611_Init(hspi_sensor, htim_ms, &sensor);
 	LKF_Construtor(&filtroKalman);
 	filtroKalman.init(&filtroKalman, &(sensor.altitude), &(dadosVoo.velocidadeAtual));
 	TIM_MS = htim_ms->Instance;
+	HRTC_SYS_PTR = hrtc_sys;
 
 	CaixaPreta_t rec = lerCaixaPretaW25Q();
 
@@ -183,6 +186,7 @@ void setupVoo(SPI_HandleTypeDef *hspi_mem, SPI_HandleTypeDef *hspi_sensor, TIM_H
 
 	// INICIA O METRÔNOMO DE 10ms
 	HAL_TIM_Base_Start_IT(htim_ms);
+	apagarLedPlaca();
 }
 
 void processarLogicaVoo(void) {
@@ -332,7 +336,7 @@ static void verificarErros(void){
 
 static inline void registrarLogVoo(void) {
     if (!flagGravacaoParada) {
-        adicionarLogW25Q(&hrtc, &dadosVoo);
+        adicionarLogW25Q(HRTC_SYS_PTR, &dadosVoo);
     }
 }
 
