@@ -43,9 +43,17 @@ RAD/
 
 ---
 
+## ⏱️ Sincronização de Tempo (RTC)
+
+O sistema utiliza o periférico RTC (*Real-Time Clock*) interno do STM32 para gerar as marcações de tempo (*timestamps*) dos logs gravados na Caixa Preta. 
+
+É importante notar que o firmware **não rastreia a hora global absoluta do mundo real** (pois o foguete opera de forma isolada, sem sincronização via rede NTP ou módulo GPS). Em vez disso, o RTC atua como um **cronômetro relativo de altíssima precisão**. Ao energizar a placa, o relógio inicia a partir de um valor base padrão (ex: `00:00:00`) e carimba cada registro de telemetria com a sua progressão. Isso garante que, durante a extração e análise dos dados no PC, toda a cinemática e os eventos de voo (decolagem, apogeu, ejeção) estejam perfeitamente alinhados e ordenados de forma cronológica.
+
+---
+
 ## 🎛️ Macros de Configuração (`config_voo.h`)
 
-O comportamento central do firmware é ditado por duas macros de pré-processamento localizadas no arquivo `config_voo.h`. Alterar estas definições muda radicalmente a compilação e a alocação de recursos do código:
+O comportamento central do firmware é ditado por macros de pré-processamento localizadas no arquivo `config_voo.h`. Alterar estas definições muda radicalmente a compilação e a alocação de recursos do código:
 
 * **`#define EM_VOO`**:
     * **Ativado (Descomentado):** Modo de Operação Real. Otimiza o código para o voo, desativando completamente a comunicação USB e substituindo todas as funções de `print` por instruções vazias (`do {} while(0)`). Garante que 100% dos ciclos de clock do processador sejam dedicados à física e aos sensores.
@@ -53,6 +61,12 @@ O comportamento central do firmware é ditado por duas macros de pré-processame
 * **`#define USE_W25Q`**:
     * **Ativado (Descomentado):** Direciona a gravação de dados de telemetria para a "Caixa Preta" externa (Memória Flash SPI W25Q128). Configuração obrigatória para voos reais.
     * **Desativado (Comentado):** Redireciona a gravação para um setor isolado da memória Flash interna do próprio STM32. Útil para testes de bancada rápidos de software (Mock) sem a necessidade de ter o chip SPI conectado.
+* **`#define VERBOSE`**:
+    * **Ativado (Descomentado):** Habilita a impressão detalhada de dados de *debug* no terminal (ex: comparação de altura RAW vs Kalman, transições de estado a cada segundo). Excelente para diagnósticos e validação matemática na bancada.
+    * **Desativado (Comentado):** Mantém o terminal limpo, imprimindo apenas transições de estado essenciais e avisos de segurança.
+* **`#define USE_BUZZER`**:
+    * **Ativado (Descomentado):** Habilita os avisos sonoros (*beeps*) físicos do sistema para alertas de calibração, recuperação de erros e resgate em solo.
+    * **Desativado (Comentado):** Silencia o pino do buzzer. Ideal para sessões de programação e testes contínuos durante a madrugada sem gerar perturbação no ambiente.
 
 ---
 
@@ -65,11 +79,13 @@ Através de um terminal serial (ex: PuTTY, Tera Term, HTerm, Monitor Serial), os
 | :---: | :--- | :--- |
 | **`V`** | Visualizar Todos | Imprime a tabela de telemetria completa armazenada na W25Q. |
 | **`U`** | Último Log | Imprime apenas o bloco de dados mais recente gravado. |
-| **`I`** | Idle / Parar | Interrompe a gravação atual e descarrega o buffer da RAM. |
+| **`I`** | Idle / Parar | Pausa a gravação em andamento (apenas levanta a flag), sem descarregar o buffer da RAM. |
+| **`R`** | Retomar Gravação | Retoma a gravação manual interrompida (desde que o voo não tenha acabado). |
 | **`A`** | Apagar Logs | Executa um *Smart Erase*, apagando apenas os blocos de memória sujos (< 1s). |
 | **`$`** | Apagar TUDO | **CUIDADO:** Formata o chip W25Q inteiro (Processo Crítico, leva ~40s). |
 | **`S`** | Simular Ao Vivo | Executa um teste SITL e printa a simulação da física no terminal a 10Hz. |
 | **`M`** | Mock de Memória | Gera um voo simulado e grava os dados fisicamente na W25Q a 100Hz. |
+| **`E`** | Forçar Erro | Aborta a operação e força a transição para `ESTADO_ERRO`, paralisando o sistema. |
 
 ### Sem Caixa Preta (Flash STM32 Nativa)
 | Comando | Ação | Descrição |

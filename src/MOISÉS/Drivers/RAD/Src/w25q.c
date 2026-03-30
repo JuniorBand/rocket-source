@@ -166,13 +166,18 @@ void visualizarLogsW25Q(void) {
         printAddr += sizeof(LogData_t);
     }
 
-    u32 tempo_ligado = ((HAL_GetTick() - seguroVoo.tempo_inicio_ms)/1000);
+    u32 tempo_voo = 0; // Começa zerado por padrão
+
+	// Só calcula o tempo real se o foguete já tiver saído da bancada
+	if ((dadosVoo.estadoAtual >= ESTADO_EM_VOO) && (dadosVoo.estadoAtual != ESTADO_ERRO)) {
+		tempo_voo = ((HAL_GetTick() - seguroVoo.tempo_inicio_ms) / 1000);
+	}
 
     // Rodape Estatistico ajustado para a nova largura de 118 caracteres
     printlnMagenta("======================================================================================================================");
     snprintf(buffer_saida, sizeof(buffer_saida),
             "ESTATISTICAS FINAIS:\r\n- Altitude Maxima: %.2f m; Tempo de Voo: %lu s; Runtime: %lu s.",
-            seguroVoo.altitude_maxima, (seguroVoo.tempo_inicio_ms/1000), tempo_ligado);
+            seguroVoo.altitude_maxima, tempo_voo, (HAL_GetTick()/1000));
     printlnLGreen("%s", buffer_saida);
     printlnMagenta("======================================================================================================================");
 }
@@ -180,18 +185,26 @@ void visualizarLogsW25Q(void) {
 
 void visualizarUltimoLogW25Q(void){
     LogData_t leitura;
-    u32 printAddr = currentAddr - (bufferIndex * sizeof(LogData_t));
-    char buffer_saida[256]; // Corrigido para 256
-    char barra_grafica[55]; // Corrigido para 55
+    char buffer_saida[256];
+    char barra_grafica[55];
 
-    // Banner Inicial 100% simetrico (118 caracteres de largura exatos)
+    // Banner Inicial 100% simetrico
     printlnLCyan("\r\n======================================================================================================================");
     printlnLYellow("                                     RELATORIO DE VOO - VISUALIZADOR (v5.0)                                     ");
     printlnLCyan("======================================================================================================================");
     printlnLMagenta("   HORA   |        TELEMETRIA (A/V/P/T)           |     STATUS     | GRAFICO (# = 10m)                                ");
     printlnLCyan("----------|---------------------------------------|----------------|--------------------------------------------------");
 
-    if (currentAddr < LIMIT) {
+    // 1. O dado mais recente está na RAM? Puxa de lá!
+    if (bufferIndex > 0) {
+        leitura = bufferRAM[bufferIndex - 1]; // Pega a última struct preenchida
+    }
+    // 2. A RAM está vazia, mas a Flash tem dados? Puxa da Flash!
+    else if (currentAddr > 0 && currentAddr < LIMIT) {
+
+        // Se bufferIndex é zero, o último dado gravado está exatamente 1 struct ATRÁS do currentAddr!
+        u32 printAddr = currentAddr - sizeof(LogData_t);
+
         // Leitura Fisica da Flash W25Q
         w25q_CS_LOW();
         u8 cmd[4] = { CMD_READ_DATA, (printAddr >> 16) & 0xFF, (printAddr >> 8) & 0xFF, printAddr & 0xFF };
@@ -199,39 +212,55 @@ void visualizarUltimoLogW25Q(void){
         HAL_SPI_Receive(w25q_spi, (u8*)&leitura, sizeof(LogData_t), 20);
         w25q_CS_HIGH();
 
-        if (leitura.hora == 0xFF) { printlnRed("Nenhum dado salvo!"); return; }
-
-        int num_barras = (int)(leitura.altitude / 10.0f);
-        if (num_barras > 50) num_barras = 50;
-        if (num_barras < 0) num_barras = 0;
-
-        memset(barra_grafica, 0, sizeof(barra_grafica));
-        for (int i = 0; i < num_barras; i++) barra_grafica[i] = '#';
-
-        u8 st = (u8)leitura.estado;
-        if (st > 6) st = 6;
-
-        snprintf(buffer_saida, sizeof(buffer_saida),
-            "%s %02d:%02d:%02d %s|"
-            "%s A:%7.1f V:%7.1f P:%6.1f T:%6.1f %s|"
-            "%s %-14s %s|"
-            "%s %s",
-            RESET, leitura.hora, leitura.min, leitura.seg, LMAGENTA,
-            LCYAN, leitura.altitude, leitura.velocidade, leitura.pressao, leitura.temperatura, LMAGENTA,
-            LYELLOW, PRINT_ESTADO[st], LMAGENTA,
-            LGREEN, barra_grafica);
-
-        printf("%s%s\r\n", buffer_saida, RESET);
-        HAL_Delay(DELAY);
+        if (leitura.hora == 0xFF) {
+            printlnRed("Nenhum dado salvo na Flash (Leitura Vazia)!");
+            return;
+        }
+    }
+    // 3. Tudo zerado
+    else {
+        printlnRed("\r\nNenhum dado salvo na Flash ou na RAM!\r\n");
+        return;
     }
 
-    u32 tempo_ligado = ((HAL_GetTick() - seguroVoo.tempo_inicio_ms)/1000);
+    // ========================================================================
+    // TUDO QUE FICA AQUI FORA DOS IFs VAI SER EXECUTADO PARA A RAM E PRA FLASH
+    // ========================================================================
 
-    // Rodape Estatistico ajustado para a nova largura de 118 caracteres
+    int num_barras = (int)(leitura.altitude / 10.0f);
+    if (num_barras > 50) num_barras = 50;
+    if (num_barras < 0) num_barras = 0;
+
+    memset(barra_grafica, 0, sizeof(barra_grafica));
+    for (int i = 0; i < num_barras; i++) barra_grafica[i] = '#';
+
+    u8 st = (u8)leitura.estado;
+    if (st > 6) st = 6;
+
+    snprintf(buffer_saida, sizeof(buffer_saida),
+        "%s %02d:%02d:%02d %s|"
+        "%s A:%7.1f V:%7.1f P:%6.1f T:%6.1f %s|"
+        "%s %-14s %s|"
+        "%s %s",
+        RESET, leitura.hora, leitura.min, leitura.seg, LMAGENTA,
+        LCYAN, leitura.altitude, leitura.velocidade, leitura.pressao, leitura.temperatura, LMAGENTA,
+        LYELLOW, PRINT_ESTADO[st], LMAGENTA,
+        LGREEN, barra_grafica);
+
+    printf("%s%s\r\n", buffer_saida, RESET);
+
+    u32 tempo_voo = 0; // Começa zerado por padrão
+
+	// Só calcula o tempo real se o foguete já tiver saído da bancada
+	if ((dadosVoo.estadoAtual >= ESTADO_EM_VOO) && (dadosVoo.estadoAtual != ESTADO_ERRO)) {
+		tempo_voo = ((HAL_GetTick() - seguroVoo.tempo_inicio_ms) / 1000);
+	}
+
+
     printlnMagenta("======================================================================================================================");
     snprintf(buffer_saida, sizeof(buffer_saida),
             "ESTATISTICAS FINAIS:\r\n- Altitude Maxima: %.2f m; Tempo de Voo: %lu s; Runtime: %lu s.",
-            seguroVoo.altitude_maxima, (seguroVoo.tempo_inicio_ms/1000), tempo_ligado);
+            seguroVoo.altitude_maxima, tempo_voo, (HAL_GetTick()/1000));
     printlnLGreen("%s", buffer_saida);
     printlnMagenta("======================================================================================================================");
 }
@@ -249,9 +278,10 @@ void adicionarLogW25Q(RTC_HandleTypeDef* hrtc_log, DadosVoo_t *dadosVoo) {
 		return;
 	}
 
-	RTC_TimeTypeDef sTime;
+	RTC_TimeTypeDef sTime = {0};
     HAL_RTC_GetTime(hrtc_log, &sTime, RTC_FORMAT_BIN);
-    RTC_DateTypeDef sDate; HAL_RTC_GetDate(hrtc_log, &sDate, RTC_FORMAT_BIN); // Leitura dummy necess�ria
+    RTC_DateTypeDef sDate = {0};
+    HAL_RTC_GetDate(hrtc_log, &sDate, RTC_FORMAT_BIN); // Leitura dummy necess�ria
 
     bufferRAM[bufferIndex].hora = sTime.Hours;
     bufferRAM[bufferIndex].min = sTime.Minutes;
@@ -305,7 +335,7 @@ void pararGravacaoW25Q(void) {
         bufferIndex = 0;
     }
 
-    currentAddr = LIMIT; // Trava futuras gravações
+    //currentAddr = LIMIT; // Trava futuras gravações
 }
 
 
@@ -319,10 +349,10 @@ void apagarLogsW25Q(void) {
         return;
     }
 
-    // 2. Descobre onde os dados terminam.
-    // A mascara 0xFFFF0000 zera os ultimos 16 bits, arredondando o endereco
-    // para a base do bloco de 64KB atual. Depois somamos 1 bloco para garantir a margem.
-    u32 limite_apagamento = (currentAddr & 0xFFFF0000) + W25Q_BLOCK_SIZE;
+    // 2. Descobre o número do bloco atual para apagar tudo, incluindo ele.
+    // Divisão inteira (shift) diz em qual bloco estamos. Multiplicar + 1 dá o limite cravado.
+    u32 num_bloco_atual = currentAddr / W25Q_BLOCK_SIZE;
+    u32 limite_apagamento = (num_bloco_atual + 1) * W25Q_BLOCK_SIZE;
 
     // 3. Trava de seguranca para nunca apagar a memoria toda sem querer
     if (limite_apagamento > LIMIT) {
@@ -339,8 +369,10 @@ void apagarLogsW25Q(void) {
         printLYellow("%s", buffer_msg);
     }
 
-    // 5. Zera o ponteiro global
+    // 5. Zera o ponteiro global e limpa o buffer
     currentAddr = 0;
+    bufferIndex = 0; // Garante que a RAM não vai vazar lixo pro próximo voo
+
     printlnLGreen("--- LIMPEZA INTELIGENTE CONCLUIDA! PRONTO PARA VOO ---\r\n");
 }
 
@@ -446,7 +478,7 @@ static void recuperarEnderecoW25Q(void) {
     currentAddr = addr;
 
     snprintf(buffer_msg, sizeof(buffer_msg), "Ponteiro inicializado/restaurado no endereco: 0x%06lX\r\n", currentAddr);
-    printLGreen("%s", buffer_msg);
+    printlnLGreen("%s", buffer_msg);
 }
 
 

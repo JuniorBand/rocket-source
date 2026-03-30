@@ -39,6 +39,7 @@
 
 #include <ms5611.h>
 #include <math.h>
+#include <usb_com.h>
 
 // ============================================================================
 // COMANDOS DO MS5611 (Datasheet - Modo OSR 4096)
@@ -56,6 +57,8 @@ static MS5611_State_t estado_ms5611;
 u32 sensor_timer = 0;
 u8 temp_skip = 0;
 u8 flag_novo_dado = 0;
+static u32 time_verbose = 0;
+static u8 d2_lido = 0; // Flag para garantir que a temperatura real chegou
 
 static u32 D1;
 static u32 D2_cache = 8000000; // Valor seguro de inicialização
@@ -132,6 +135,8 @@ static inline void MS5611_ReadTemp_Raw(void) {
 // MOTOR MATEMÁTICO (Roda sempre que D1 é atualizado)
 // ==============================================================================
 static void MS5611_CalcularTudo(void) {
+	if (!d2_lido){ return; }
+
     i64 dT = (i64)D2_cache - ((i64)sensor_ptr->c[5] << 8);
     i64 TEMP = 2000 + ((dT * (i64)sensor_ptr->c[6]) >> 23);
 
@@ -162,19 +167,40 @@ static void MS5611_CalcularTudo(void) {
     sensor_ptr->temperatura = (float)TEMP / 100.0f;
     sensor_ptr->pressao = (float)P / 100.0f;
 
-    // Fórmula Barométrica
-    if (sensor_ptr->pressao_ref > 0){
-        sensor_ptr->altitude = 44330.0f * (1.0f - powf((sensor_ptr->pressao / sensor_ptr->pressao_ref), 0.190295f));
-    }
+    // --- BLOQUEIO ANTI-NAN (SANITY CHECK) ---
+	// Pressão atmosférica NUNCA pode ser <= 0. Se for, foi um glitch do SPI (D1 leu zero).
+	if (sensor_ptr->pressao_ref > 0.0f && sensor_ptr->pressao > 10.0f){
 
-    flag_novo_dado = 1; // Avisa o sistema de voo que os floats estão fresquinhos kkkkk
+		// Só calcula o powf() se tivermos certeza que não vai dar pau na matemática
+		sensor_ptr->altitude = 44330.0f * (1.0f - powf((sensor_ptr->pressao / sensor_ptr->pressao_ref), 0.190295f));
+
+		#ifdef VERBOSE
+			if(HAL_GetTick() - time_verbose >= 1000){
+				printlnLGreen("\r\nMS5611: Pref %.2f; P %.2f; T %.2f; A %.2f", sensor_ptr->pressao_ref, sensor_ptr->pressao, sensor_ptr->temperatura, sensor_ptr->altitude);
+				time_verbose = HAL_GetTick();
+			}
+		#endif
+
+	    flag_novo_dado = 1; // Avisa o sistema de voo que os dados são seguros e válidos
+
+	} else {
+		#ifdef VERBOSE
+			// Ignora a leitura! Não seta a flag_novo_dado.
+			// O Filtro de Kalman vai apenas "pular" esse ciclo de 10ms e manter a inércia,
+			// salvando o foguete de ser envenenado por um NaN!
+			if(HAL_GetTick() - time_verbose >= 1000){
+				printlnRed("\r\n>>> GLITCH DO SENSOR IGNORADO <<<");
+				time_verbose = HAL_GetTick();
+			}
+		#endif
+	}
+
 }
 
 // ==============================================================================
 // MÁQUINA DE ESTADOS PRINCIPAL (Chamada a cada 10ms pelo Timer)
 // ==============================================================================
 void MS5611_ReadData(void) {
-
     switch (estado_ms5611) {
 
         case MS_PEDIR_PRESSAO:
@@ -211,7 +237,7 @@ void MS5611_ReadData(void) {
         case MS_LER_TEMP_E_CALCULAR:
             // 5. Resgata a temperatura crua (D2)
             MS5611_ReadTemp_Raw();
-
+            d2_lido = 1;
             // O próximo ciclo já vai usar o D2 novo para calcular a pressão,
             // então não precisamos forçar a matemática aqui de novo.
             estado_ms5611 = MS_PEDIR_PRESSAO;

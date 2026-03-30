@@ -78,6 +78,7 @@
 #include <config_voo.h>
 #include <main.h>
 #include <utils.h>
+#include <prints.h>
 #include <ms5611.h>
 #include <math.h>
 #include <usb_com.h> // Nao utilizado EM_VOO
@@ -107,8 +108,12 @@ static TIM_TypeDef *TIM_MS;
 static RTC_HandleTypeDef *HRTC_SYS_PTR;
 volatile u8 flagTickVoo = 0;
 static u8 contadorFalhasSensor = 0;
-static u8 flagGravacaoParada = 0;
-static u8 flagFimDeVoo = 0;
+u8 flagGravacaoParada = 0;
+u8 flagFimDeVoo = 0;
+
+#ifdef VERBOSE
+	static u32 time_verbose = 0;
+#endif
 
 
 static void acionarEjecao(const char *razao_missao);
@@ -130,62 +135,55 @@ void setupVoo(SPI_HandleTypeDef *hspi_mem, SPI_HandleTypeDef *hspi_sensor, TIM_H
 
 	w25qInit(hspi_mem, htim_ms, W25Q_CS_PIN);
 	MS5611_Init(hspi_sensor, htim_ms, &sensor);
+
 	LKF_Construtor(&filtroKalman);
 	filtroKalman.init(&filtroKalman, &(sensor.altitude), &(dadosVoo.velocidadeAtual));
 	TIM_MS = htim_ms->Instance;
 	HRTC_SYS_PTR = hrtc_sys;
 
+	// INICIA O METRÔNOMO DE 10ms
+	HAL_TIM_Base_Start_IT(htim_ms);
+
 	CaixaPreta_t rec = lerCaixaPretaW25Q();
 
 	if (rec.status_voo == MAGIC_NUMBER_SIRIUS) {
-		// --- MODO RECUPERACAO (REINICIO NO AR) ---
-		printLYellow("\r\n>>> AVISO: REINICIO EM VOO DETECTADO! RECUPERANDO DADOS... <<<");
+			// --- MODO RECUPERACAO (REINICIO NO AR) ---
+			printLYellow("\r\n>>> AVISO: REINICIO EM VOO DETECTADO! RECUPERANDO DADOS... <<<");
 
-		// 1. Restaura a pressão do chão salva na Caixa Preta
-		sensor.pressao_ref = rec.pressao_solo;
+			sensor.pressao_ref = rec.pressao_solo;
 
-		// 2. Pula a fase de "PRONTO" e vai direto para "EM VOO"
-		dadosVoo.estadoAtual = ESTADO_EM_VOO;
-		seguroVoo.tempo_inicio_ms = HAL_GetTick();
-
-		beep(1000, 1); // Bip longo de alerta
-		HAL_Delay(100);
-		beep(50, 3);   // 3 bips curtos de pânico
-
-	} else {
-		// --- MODO NORMAL (NO CHÃO) ---
-		printlnLCyan("\r\n>>> CALIBRANDO SENSOR DE PRESSAO NO SOLO... <<<");
-
-		float soma_pressao = 0;
-		u8 leituras_ok = 0;
-
-		// Faz 15 leituras forçadas para estabilizar a referência do chão
-		for (u8 i = 0; i < 15; i++) {
-			// Como o MS5611_ReadData precisa de 3 ciclos (Pedir P -> Ler P -> Ler T)
-			// Chamamos 3 vezes com 10ms de delay para simular o Timer funcionando.
-			for(u8 j = 0; j < 3; j++) {
+			// 1. DRENO DE LIXO (Warm-up do Hardware)
+			// Roda a máquina de estados do sensor 10 vezes e joga os dados no lixo.
+			// Isso purga o barramento SPI de ruídos elétricos gerados pelo religamento da energia.
+			for (int i = 0; i < 10; i++) {
 				MS5611_ReadData();
 				HAL_Delay(10);
 			}
 
-			if (sensor.pressao > 400.0f) {
-				soma_pressao += sensor.pressao;
-				leituras_ok++;
+			// 2. Extrai a primeira leitura termicamente estável
+			if (sensor.pressao > 300.0f && sensor.pressao < 1200.0f) {
+				sensor.altitude = 44330.0f * (1.0f - powf((sensor.pressao / sensor.pressao_ref), 0.190295f));
+			} else {
+				sensor.altitude = 0.0f; // Blindagem final caso o sensor tenha torrado fisicamente
 			}
-		}
 
-		if (leituras_ok > 0) {
-			sensor.pressao_ref = soma_pressao / (float)leituras_ok;
+			// 3. Choque de Realidade no Kalman (Limpo)
+			dadosVoo.velocidadeAtual = 0.0f;
+			filtroKalman.reiniciar(&filtroKalman, &(sensor.altitude), &(dadosVoo.velocidadeAtual));
+
+			seguroVoo.altitude_maxima = sensor.altitude;
+			dadosVoo.estadoAtual = ESTADO_EM_VOO;
+			seguroVoo.tempo_inicio_ms = HAL_GetTick();
+
+			beep(1000, 1);
+			HAL_Delay(100);
+			beep(50, 3);
 		} else {
-			sensor.pressao_ref = 1013.25f; // Falha na calibração, usa o padrão do nível do mar
-		}
 
-		dadosVoo.estadoAtual = ESTADO_PRONTO; // Vai para a rampa de lançamento
-		beep(500, 1); // Bip de calibração concluída
+		printlnLCyan("\r\n>>> CALIBRANDO SENSOR DE PRESSAO NO SOLO... <<<");
+
 	}
 
-	// INICIA O METRÔNOMO DE 10ms
-	HAL_TIM_Base_Start_IT(htim_ms);
 	apagarLedPlaca();
 }
 
@@ -194,6 +192,8 @@ void processarLogicaVoo(void) {
 
 		flagTickVoo = 0; // Abaixa a bandeira imediatamente
 
+		static u32 timer_estabilizacao_kalman = 0;
+
 		// Agora sim, executa a lógica pesada de sensores e flash com tempo garantido
 		#ifndef EM_VOO
 			#pragma message("Utilizando conexão via USB.")
@@ -201,101 +201,188 @@ void processarLogicaVoo(void) {
 		#endif
 
 		MS5611_ReadData();
-		filtroKalman.update(&filtroKalman, sensor.altitude, DT, &(dadosVoo.altitudeAtual), &(dadosVoo.velocidadeAtual));
+
+		if (sensor.pressao > 300.0f && sensor.pressao < 1200.0f && sensor.temperatura > -40.0f && sensor.temperatura < 85.0f) {
+			filtroKalman.update(&filtroKalman, sensor.altitude, DT, &(dadosVoo.altitudeAtual), &(dadosVoo.velocidadeAtual));
+			dadosVoo.temperaturaAtual = sensor.temperatura;
+			dadosVoo.pressaoAtual = sensor.pressao;
+		}
+
+		#ifdef VERBOSE
+			if(HAL_GetTick() - time_verbose >= 1000){
+				printlnLCyan("\r\nDADOS FILTRADOS: P: %.2f; T: %.2f; A: %.2f; V: %.2f; E: %s", dadosVoo.pressaoAtual, \
+						dadosVoo.temperaturaAtual, dadosVoo.altitudeAtual, dadosVoo.velocidadeAtual, PRINT_ESTADO[dadosVoo.estadoAtual]);
+				time_verbose = HAL_GetTick();
+			}
+		#endif
+
 		verificarErros();
 
 		switch (dadosVoo.estadoAtual) {
 
-		case ESTADO_CALIBRACAO:
-			dadosVoo.estadoAtual = ESTADO_PRONTO;
-			registrarLogVoo();
-			break;
+			case ESTADO_CALIBRACAO:
+				{
+						static u16 ciclos_aquecimento = 0;
+						static double soma_pressao_ref = 0.0f; // Usando double para não perder precisão decimal!
+						static u16 amostras_validas = 0;
 
-		case ESTADO_PRONTO:
+						// Fase 1: Ignora os primeiros 200 ticks (2 SEGUNDOS INTEIROS) pro chip esquentar
+						if (ciclos_aquecimento < 200) {
+							ciclos_aquecimento++;
+						}
+						// Fase 2: Coleta 100 amostras (mais 1 segundo tirando a média perfeita)
+						else if (amostras_validas < 100) {
+							// MURALHA DE FERRO DA CALIBRAÇÃO:
+							// Só aceita somar na média se a pressão for da Terra (entre 300 e 1200)
+							if (sensor.pressao > 300.0f && sensor.pressao < 1200.0f) {
+								soma_pressao_ref += (double)sensor.pressao;
+								amostras_validas++;
+							}
+							// Se vier glitch > 1200, ele simplesmente ignora o loop e tenta de novo 10ms depois
+						}
+						// Fase 3: Calibração finalizada!
+						else {
+							// Calcula a média com precisão máxima e converte de volta pra float
+							sensor.pressao_ref = (float)(soma_pressao_ref / 100.0);
 
-			if (dadosVoo.altitudeAtual > ALTITUDE_LANCAMENTO && dadosVoo.velocidadeAtual > 0) {
-				// DETECTOU DECOLAGEM!
-				dadosVoo.estadoAtual = ESTADO_EM_VOO;
-				seguroVoo.tempo_inicio_ms = HAL_GetTick();
-				filtroKalman.reiniciar(&filtroKalman, &(dadosVoo.altitudeAtual), &(dadosVoo.velocidadeAtual));
+							// Força o cálculo da altitude agora para cravar o 0.00m
+							sensor.altitude = 44330.0f * (1.0f - powf((sensor.pressao / sensor.pressao_ref), 0.190295f));
 
-				// Agora sim, come�a a gravar
-				registrarLogVoo();
-				salvarCaixaPretaW25Q(sensor.pressao_ref, MAGIC_NUMBER_SIRIUS);
+							sensor.altitude = 0.0f;
+							dadosVoo.velocidadeAtual = 0.0f; // MATA A VELOCIDADE FANTASMA AQUI!
 
-				printLCyan("\r\n>>> %s DETECTADO <<<", PRINT_ESTADO[ESTADO_EM_VOO]);
-				beep(200, 1);
-			}
-			break;
+							// ESSENCIAL: O Filtro de Kalman acumulou lixo durante esses 3 segundos.
+							// Avisamos ele: "Apaga tudo! A altitude oficial agora é 0.00m e estamos parados".
+							filtroKalman.reiniciar(&filtroKalman, &(sensor.altitude), &(dadosVoo.velocidadeAtual));
 
-		case ESTADO_EM_VOO:
-			// Atualiza altitude máxima
-			if (dadosVoo.altitudeAtual > seguroVoo.altitude_maxima) {
-				seguroVoo.altitude_maxima = dadosVoo.altitudeAtual;
-			}
+							printlnLCyan("\r\n>>> CALIBRACAO CONCLUIDA! Pref: %.2f hPa <<<", sensor.pressao_ref);
+							beep(500, 1);
 
-			// Verifica falha de tempo primeiro (prioridade máxima de erro)
-			if (HAL_GetTick() - seguroVoo.tempo_inicio_ms > TEMPO_MAX_VOO_MS) {
-				dadosVoo.estadoAtual = ESTADO_ERRO;
-				registrarLogVoo();
-				acionarEjecao("\r\nTIMEOUT DE VOO - APOGEU NAO DETECTADO");
-			}
-			// Ejeção exata ao atingir a meta OU detectar queda (apogeu natural)
-			else if ((dadosVoo.altitudeAtual >= META_APOGEU - DESVIO_MIN) ||
-					 (dadosVoo.altitudeAtual < (seguroVoo.altitude_maxima - DESCIDA_MINIMA))) {
-				dadosVoo.estadoAtual = ESTADO_APOGEU;
-			}
+							dadosVoo.estadoAtual = ESTADO_PRONTO;
+							registrarLogVoo();
 
-			registrarLogVoo();
-			break;
+							ciclos_aquecimento = 0;
+							soma_pressao_ref = 0.0f;
+							amostras_validas = 0;
+							timer_estabilizacao_kalman = 0;
+						}
+						break;
+					}
 
-		case ESTADO_APOGEU:
+			case ESTADO_PRONTO:
+				{
+					// Espera 1 segundo (100 ticks) APÓS a calibração pro Kalman "acalmar" os cálculos
+					// de velocidade antes de autorizar o lançamento.
+					if (timer_estabilizacao_kalman < 100) {
+						timer_estabilizacao_kalman++;
+						break; // Sai do switch e não tenta decolar
+					}
 
-			registrarLogVoo();
-			printLYellow("\r\n>>> %s CONFIRMADO <<<", PRINT_ESTADO[ESTADO_APOGEU]);
-			acionarEjecao(PRINT_ESTADO[ESTADO_APOGEU]);
-			dadosVoo.estadoAtual = ESTADO_RECUPERACAO;
-			break;
+					registrarLogVoo();
 
-		case ESTADO_RECUPERACAO:
-			// Detecta Pouso (Baixa alt e Baixa dadosVoo.velocidadeAtual )
-			if (dadosVoo.altitudeAtual < ALTITUDE_POUSO && dadosVoo.velocidadeAtual > -1.5f \
-					&& dadosVoo.velocidadeAtual < 1.5f) {
-				dadosVoo.estadoAtual = ESTADO_POUSADO;
-			}
-			else {
-				registrarLogVoo();
-			}
-			break;
+					// Regras de Lançamento (Blindadas)
+					// Nota: Em testes de bancada, exija uma velocidade de subida "real"
+					// (ex: > 1.5 m/s) para evitar que o ruído ative o voo.
+					if ((dadosVoo.altitudeAtual > ALTITUDE_LANCAMENTO) && (dadosVoo.velocidadeAtual > VELOCIDADE_LANCAMENTO)) {
+						// DETECTOU DECOLAGEM!
+						dadosVoo.estadoAtual = ESTADO_EM_VOO;
+						seguroVoo.tempo_inicio_ms = HAL_GetTick();
 
-		case ESTADO_POUSADO:
-			if (!flagFimDeVoo) {
-				registrarLogVoo();
-				printLGreen("\r\n>>> %s DETECTADO <<<", PRINT_ESTADO[ESTADO_POUSADO]);
-				// -> CAIXA PRETA: Pousou seguro! Desativa a flag para não entrar em recuperação no próximo boot.
-				salvarCaixaPretaW25Q(1013.25f, 0x00000000);
-				pararGravacaoW25Q();
-				flagGravacaoParada = 1;
-				flagFimDeVoo = 1;
-			}
-			static u32 timerPouso = 0;
-			resgatarFoguete(3000, 1000, &timerPouso);
-			break;
+						// NUNCA reinicie o Kalman AQUI. Se você acabou de decolar,
+						// reiniciar o Kalman apaga o vetor de velocidade e fode a estimativa.
+						// filtroKalman.reiniciar(...); // <<-- REMOVA ISSO SE TIVER
 
-		case ESTADO_ERRO:
-			if (!flagFimDeVoo) {
-				printRed("\r\n=================================================");
-				printRed(">>>    %s!    <<<\r\n>>>    SISTEMA PARALISADO    <<<", PRINT_ESTADO[ESTADO_ERRO]);
-				printRed("=================================================");
-				pararGravacaoW25Q();
-				flagGravacaoParada = 1;
-				flagFimDeVoo = 1;
-			}
-			static u32 timerErro = 0;
-			resgatarFoguete(600, 300, &timerErro);
-			break;
+						// Agora sim, começa a gravar
+						registrarLogVoo();
+						salvarCaixaPretaW25Q(sensor.pressao_ref, MAGIC_NUMBER_SIRIUS);
 
-		default: break;
+						printlnLCyan("\r\n>>> %s DETECTADO <<<", PRINT_ESTADO[ESTADO_EM_VOO]);
+						beep(200, 1);
+					}
+					break;
+				}
+			case ESTADO_EM_VOO:
+				{
+					// Atualiza altitude máxima
+					if (dadosVoo.altitudeAtual > seguroVoo.altitude_maxima) {
+						seguroVoo.altitude_maxima = dadosVoo.altitudeAtual;
+						#ifdef VERBOSE
+							printlnGreen("RAW: %.2f | KALMAN: %.2f | VEL: %.2f", sensor.altitude, dadosVoo.altitudeAtual, dadosVoo.velocidadeAtual);
+						#endif
+					}
+
+					// Verifica falha de tempo primeiro (prioridade máxima de erro)
+					if (HAL_GetTick() - seguroVoo.tempo_inicio_ms > TEMPO_MAX_VOO_MS) {
+						dadosVoo.estadoAtual = ESTADO_ERRO;
+						registrarLogVoo();
+						acionarEjecao("\r\nTIMEOUT DE VOO - APOGEU NAO DETECTADO");
+					}
+					// =========================================================================
+					// CORREÇÃO: ALTITUDE LOCKOUT (TRAVA DE APOGEU NA BANCADA)
+					// Só permite acionar apogeu se já passamos de 15 metros na vida real!
+					// =========================================================================
+					else if ( (dadosVoo.altitudeAtual >= (META_APOGEU - DESVIO_MIN)) ||
+								((dadosVoo.altitudeAtual < (seguroVoo.altitude_maxima - DESCIDA_MINIMA))
+								&& (seguroVoo.altitude_maxima > ALTITUDE_MIN_EJECAO))
+							 ) {
+						dadosVoo.estadoAtual = ESTADO_APOGEU;
+					}
+
+					registrarLogVoo();
+					break;
+				}
+			case ESTADO_APOGEU:
+				{
+					registrarLogVoo();
+					printlnLYellow("\r\n>>> %s CONFIRMADO <<<", PRINT_ESTADO[ESTADO_APOGEU]);
+					acionarEjecao(PRINT_ESTADO[ESTADO_APOGEU]);
+					dadosVoo.estadoAtual = ESTADO_RECUPERACAO;
+					break;
+				}
+			case ESTADO_RECUPERACAO:
+				{
+					// Detecta Pouso (Baixa alt e Baixa dadosVoo.velocidadeAtual )
+					if ((dadosVoo.altitudeAtual < ALTITUDE_POUSO) && ((dadosVoo.velocidadeAtual > -VELOCIDADE_POUSO) \
+							&& (dadosVoo.velocidadeAtual < VELOCIDADE_POUSO))) {
+						dadosVoo.estadoAtual = ESTADO_POUSADO;
+					}
+					else {
+						registrarLogVoo();
+					}
+					break;
+				}
+			case ESTADO_POUSADO:
+				{
+					if (!flagFimDeVoo) {
+						registrarLogVoo();
+						printlnLGreen("\r\n>>> %s DETECTADO <<<", PRINT_ESTADO[ESTADO_POUSADO]);
+						// -> CAIXA PRETA: Pousou seguro! Desativa a flag para não entrar em recuperação no próximo boot.
+						salvarCaixaPretaW25Q(1013.25f, 0x00000000);
+						pararGravacaoW25Q();
+						flagGravacaoParada = 1;
+						flagFimDeVoo = 1;
+					}
+					static u32 timerPouso = 0;
+					resgatarFoguete(3000, 1000, &timerPouso);
+					break;
+				}
+			case ESTADO_ERRO:
+				{
+
+					if (!flagFimDeVoo) {
+						printlnRed("\r\n=================================================");
+						printlnRed("           >>>   %s!   <<<", PRINT_ESTADO[ESTADO_ERRO]);
+						printlnRed("           >>> SISTEMA PARALISADO <<<");
+						printlnRed("=================================================");
+						pararGravacaoW25Q();
+						flagGravacaoParada = 1;
+						flagFimDeVoo = 1;
+					}
+					static u32 timerErro = 0;
+					resgatarFoguete(600, 300, &timerErro);
+					break;
+				}
+			default: { break; }
 		}
 	}
 }
@@ -362,6 +449,7 @@ static inline void resgatarFoguete(u32 intervalo, u32 tempo_ligado, u32 *ultimoB
 
 		printlnMagenta("\r\n=================================================");
 		printlnLCyan("ACIONANDO EJECAO EM %.2f m. MOTIVO: %s", dadosVoo.altitudeAtual, razao_missao);
+		printlnRed("           >>> Altitude Maxima: %.2f m!   <<<", seguroVoo.altitude_maxima);
 		printlnMagenta("=================================================");
 		writePinHigh(MOSFET_PORT, MOSFET_PIN);
 		return;
@@ -370,25 +458,21 @@ static inline void resgatarFoguete(u32 intervalo, u32 tempo_ligado, u32 *ultimoB
 	#pragma message("MOSFET_PORT e MOSFET_PIN não foram definidos no main.h!")
 
 	static void acionarEjecao(const char *razao_missao){
-			printlnMagenta("\r\n=================================================");
+			printlnMagenta("\r\n=========================================================");
 			printlnLCyan("[SIMULACAO] ACIONANDO EJECAO EM %.2f m. MOTIVO: %s", dadosVoo.altitudeAtual, razao_missao);
-			printlnMagenta("=================================================");
+			printlnRed("           >>> Altitude Maxima: %.2f m!   <<<", seguroVoo.altitude_maxima);
+			printlnMagenta("=========================================================");
 			return;
 	}
 #endif
 
-#if defined(BUZZER_PORT) && defined(BUZZER_PIN)
-	#pragma message("BUZZER_PORT e BUZZER_PIN foram definidos.")
-
-	void beep(u32 duracao, u8 vezes) {
-		for (u8 i = 0; i < vezes; i++) {
-			writePinHigh(BUZZER_PORT, BUZZER_PIN); HAL_Delay(duracao);
-			writePinLow(BUZZER_PORT, BUZZER_PIN); if (i < vezes - 1) { HAL_Delay(duracao); }
-		}
+void beep(u32 duracao, u8 vezes) {
+	for (u8 i = 0; i < vezes; i++) {
+		BUZZER_OFF(); HAL_Delay(duracao);
+		BUZZER_ON(); if (i < vezes - 1) { HAL_Delay(duracao); }
 	}
-#else
-	#error "BUZZER_PORT e BUZZER_PIN não foram definidos no main.h!"
-#endif
+}
+
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 /* Precisamos verificar QUEM chamou , pois todos os Timers caem aqui */

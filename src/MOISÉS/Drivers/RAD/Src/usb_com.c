@@ -33,14 +33,16 @@
  * - interruptUSB()       : Callback de recepcao (IRQ). Levanta a flag.
  * - processarComandosUSB(): Funcao de pooling. Roteia para o switch correto.
  *
- * COMANDOS SUPORTADOS (COM 'USE_W25Q' DEFINIDO - MODO VOO):
+* COMANDOS SUPORTADOS (COM 'USE_W25Q' DEFINIDO - MODO VOO):
  * [V] - Visualizar Todos: Imprime a tabela de telemetria completa.
  * [U] - Ultimo Log      : Imprime apenas o bloco mais recente do voo.
- * [I] - Idle / Parar    : Interrompe a gravacao e descarrega o buffer RAM.
+ * [I] - Idle / Parar    : Pausa a gravacao imediatamente (sem descarregar o buffer).
+ * [R] - Retomar Gravacao: Retoma a gravacao se o sistema nao estiver paralisado.
  * [A] - Apagar Logs     : Limpeza Inteligente (Smart Erase) dos blocos usados.
  * [$] - Apagar TUDO     : Formata o chip W25Q inteiro (Processo Critico).
  * [S] - Simular Ao Vivo : Executa o SITL e printa a fisica no terminal (10Hz).
  * [M] - Mock de Memoria : Gera um voo falso e salva fisicamente na W25Q (100Hz).
+ * [E] - Forcar Erro     : Aborta o voo e forca o sistema para o Estado de Erro.
  *
  * COMANDOS SUPORTADOS (FLASH NATIVA DO STM32 - MODO BANCADA):
  * [L] - Log Teste (UP)  : Grava dado ficticio de subida e liga LED PC13.
@@ -110,6 +112,20 @@ static void chamarComandos(u8 comando){
 	switch(comando){
 
 		case 'V': // Visualizar/Printar Tudo o que já tem no flash.
+		case 'v':
+			// ==========================================================
+			// INTERLOCK DE SEGURANÇA MÁXIMA (BARREIRA TOTAL)
+			// ==========================================================
+			// Bloqueia qualquer I/O pesado se o foguete estiver armado, subindo ou caindo!
+			if (dadosVoo.estadoAtual == ESTADO_PRONTO || \
+				dadosVoo.estadoAtual == ESTADO_EM_VOO || \
+				dadosVoo.estadoAtual == ESTADO_APOGEU || \
+				dadosVoo.estadoAtual == ESTADO_RECUPERACAO) {
+
+				printlnLRed("\r\n>>> COMANDO NEGADO: FOGUETE ATIVO! <<<");
+				printlnLYellow(">>> Aguarde o Pouso ou force um Erro para acessar a memoria. <<<");
+				break; // Ejeta do switch e não deixa o comando rodar
+			}
 
 			printlnLBlue("\r\nLigando LED do PC13!\r\n");
 			acenderLedPlaca(); // Liga PC13
@@ -119,6 +135,20 @@ static void chamarComandos(u8 comando){
 
 			break;
 		case 'U':// Printa somente o último Log
+		case 'u':
+			// ==========================================================
+			// INTERLOCK DE SEGURANÇA MÁXIMA (BARREIRA TOTAL)
+			// ==========================================================
+			// Bloqueia qualquer I/O pesado se o foguete estiver armado, subindo ou caindo!
+			if (dadosVoo.estadoAtual == ESTADO_PRONTO || \
+				dadosVoo.estadoAtual == ESTADO_EM_VOO || \
+				dadosVoo.estadoAtual == ESTADO_APOGEU || \
+				dadosVoo.estadoAtual == ESTADO_RECUPERACAO) {
+
+				printlnLRed("\r\n>>> COMANDO NEGADO: FOGUETE ATIVO! <<<");
+				printlnLYellow(">>> Aguarde o Pouso ou force um Erro para acessar a memoria. <<<");
+				break; // Ejeta do switch e não deixa o comando rodar
+			}
 
 			printlnLBlue("\r\nLigando LED do PC13!\r\n");
 			acenderLedPlaca(); // Liga PC13
@@ -128,20 +158,44 @@ static void chamarComandos(u8 comando){
 
 			break;
 		case 'I': // Idle/Parar
+		case 'i':
 			printlnLBlue("\r\nDesligando LED do PC13!\r\n");
 			apagarLedPlaca(); // Liga PC13
 
 			printlnLRed("\r\nComando { %c } - Parar Gravação do W25Q.\r\n", comando);
-			pararGravacaoW25Q();
+			//pararGravacaoW25Q();
+			flagGravacaoParada = 1; // Levanta a bandeira de bloqueio
+
+			printlnLYellow("\r\n>>> GRAVACAO MANUALMENTE PAUSADA <<<");
 
 			break;
+		case 'R': // Retomar Gravação
+		case 'r':
+			// Só deixa retomar se o foguete NÃO estiver nos estados finais
+		    if (dadosVoo.estadoAtual != ESTADO_POUSADO && dadosVoo.estadoAtual != ESTADO_ERRO) {
+		    	flagGravacaoParada = 0; // Abaixa a bandeira de bloqueio
+		        printlnLGreen("\r\n>>> GRAVACAO RETOMADA COM SUCESSO <<<");
+		    } else {
+		        printlnLRed("\r\n>>> RECUSADO: Foguete ja pousou ou esta em falha critica! <<<");
+		    }
+		    break;
 		case 'A': // Apagar só a memória até onde os logs foram escritos.
+		case 'a':
 			printlnLYellow("\r\nDesligando LED do PC13!\r\n");
 			apagarLedPlaca(); // Desliga PC13
 
 			printlnLRed("\r\nComando { %c } - Apagar Todos os Logs do W25Q.\r\n", comando);
 			apagarLogsW25Q();
 
+			dadosVoo.estadoAtual = ESTADO_CALIBRACAO;
+
+			// Zera as variáveis cruciais de segurança
+			seguroVoo.altitude_maxima = 0.0f;
+			seguroVoo.tempo_inicio_ms = 0;
+			flagFimDeVoo = 0;           // Libera para um novo voo
+			flagGravacaoParada = 0;     // Garante que a gravação está pronta pra iniciar
+
+			printlnLYellow(">>> SISTEMA REINICIADO. RECALIBRANDO SENSOR NO SOLO... <<<");
 			break;
 		case '$': // (CUIDADO!) Apagar absolutamente toda o W25Q.
 			printlnLYellow("\r\nDesligando LED do PC13!\r\n");
@@ -151,8 +205,18 @@ static void chamarComandos(u8 comando){
 			printlnLYellow("Apagando memoria, aguarde 40s...");
 			apagarTudoW25Q();
 
+			dadosVoo.estadoAtual = ESTADO_CALIBRACAO;
+
+			// Zera as variáveis cruciais de segurança
+			seguroVoo.altitude_maxima = 0.0f;
+			seguroVoo.tempo_inicio_ms = 0;
+			flagFimDeVoo = 0;           // Libera para um novo voo
+			flagGravacaoParada = 0;     // Garante que a gravação está pronta pra iniciar
+
+			printlnLYellow(">>> SISTEMA REINICIADO. RECALIBRANDO SENSOR NO SOLO... <<<");
 			break;
 		case 'S': // Simular voo ao vivo (SITL) sem gravar na flash
+		case 's':
 			printlnLBlue("\r\nLigando LED do PC13!\r\n");
 			acenderLedPlaca();
 			printlnLGreen("\r\nComando { %c } - Simular Voo Ao Vivo (SITL) Sem Gravar Na Flash.\r\n", comando);
@@ -160,12 +224,20 @@ static void chamarComandos(u8 comando){
 			apagarLedPlaca();
 			break;
 		case 'M': // Gerar voo mock na memoria W25Q sem usar sensor MS5611
-					printlnLBlue("\r\nLigando LED do PC13!\r\n");
-					acenderLedPlaca();
-					printlnLGreen("\r\nComando { %c } - Gerar Voo Simulado Com W25Q.\r\n", comando);
-					gerarVooSimuladoW25Q();
-					apagarLedPlaca();
-					break;
+		case 'm':
+			printlnLBlue("\r\nLigando LED do PC13!\r\n");
+			acenderLedPlaca();
+			printlnLGreen("\r\nComando { %c } - Gerar Voo Simulado Com W25Q.\r\n", comando);
+			gerarVooSimuladoW25Q();
+			apagarLedPlaca();
+			break;
+		case 'E':
+		case 'e':
+			printlnLYellow("\r\nDesligando LED do PC13!\r\n");
+			apagarLedPlaca();
+			printlnLMagenta("\r\nComando { %c } - Forcando Erro.\r\n", comando);
+			dadosVoo.estadoAtual = ESTADO_ERRO;
+			break;
 		default:
 			printlnLRed("\r\nComando desconhecido: { %c }.\r\n", comando);
 			break;
