@@ -32,8 +32,19 @@
 // ^ Se definido: Roteia o sistema de arquivos para o chip externo W25Q.
 // Caso contrario, utiliza a flash nativa da placa.
 
+// ATENCAO: Use o USE_FILTER, pois o não uso dele pode causar erros de altitude negativa e 
+// outros glitches imprevistos, já que o filtro Kalman é responsável por suavizar os dados 
+// do sensor e fornecer uma estimativa mais estável da altitude e velocidade.
+// A velocidade ainda não foi ajustada para o modo sem filtro, então, se você desativar o filtro, 
+// o sistema de lançamento automático pode não funcionar corretamente, pois ele depende de uma 
+// leitura de velocidade confiável para detectar a decolagem.
+#define USE_FILTER
+
+// Defina a macro USE_BUZZER se você tiver um buzzer conectado e quiser usar a 
+// função de beep para feedback sonoro durante a simulação ou voo real.
 #define USE_BUZZER
 
+// Printa os dados do sensor e do filtro a cada 1 segundo (100 ticks) para debug em tempo real.
 #define VERBOSE
 
 // ==============================================================================
@@ -63,6 +74,10 @@
 	#define DESVIO_MIN           0.0f
 	#define ALTITUDE_MIN_EJECAO  1.0f
 	#define TEMPO_MAX_VOO_MS     1000000UL
+#endif
+
+#ifndef USE_FILTER
+	#define VELOCIDADE_LANCAMENTO 0.0f
 #endif
 
 

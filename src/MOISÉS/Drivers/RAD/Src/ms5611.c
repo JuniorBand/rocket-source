@@ -164,36 +164,36 @@ static void MS5611_CalcularTudo(void) {
     i64 P = (((D1 * SENS) >> 21) - OFF) >> 15;
 
     // Atualiza a Struct
-    sensor_ptr->temperatura = (float)TEMP / 100.0f;
-    sensor_ptr->pressao = (float)P / 100.0f;
+        sensor_ptr->temperatura = (float)TEMP / 100.0f;
+        sensor_ptr->pressao = (float)P / 100.0f;
 
-    // --- BLOQUEIO ANTI-NAN (SANITY CHECK) ---
-	// Pressão atmosférica NUNCA pode ser <= 0. Se for, foi um glitch do SPI (D1 leu zero).
-	if (sensor_ptr->pressao_ref > 0.0f && sensor_ptr->pressao > 10.0f){
+        // --- BLOQUEIO DE LIXO DO BARRAMENTO SPI ---
+        // Se a pressão lida for irreal (vácuo ou absurdamente alta), descarta a leitura inteira.
+        if (sensor_ptr->pressao < 10.0f || sensor_ptr->pressao > 1500.0f) {
+            #ifdef VERBOSE
+                if (HAL_GetTick() - time_verbose >= 1000) {
+                    printlnRed("\r\n>>> GLITCH DO SENSOR IGNORADO (P: %.2f) <<<", sensor_ptr->pressao);
+                    time_verbose = HAL_GetTick();
+                }
+            #endif
+            return; // Aborta e não calcula a altitude!
+        }
 
-		// Só calcula o powf() se tivermos certeza que não vai dar pau na matemática
-		sensor_ptr->altitude = 44330.0f * (1.0f - powf((sensor_ptr->pressao / sensor_ptr->pressao_ref), 0.190295f));
+        // Se passou do if acima, a pressão é confiável.
+        flag_novo_dado = 1;
 
-		#ifdef VERBOSE
-			if(HAL_GetTick() - time_verbose >= 1000){
-				printlnLGreen("\r\nMS5611: Pref %.2f; P %.2f; T %.2f; A %.2f", sensor_ptr->pressao_ref, sensor_ptr->pressao, sensor_ptr->temperatura, sensor_ptr->altitude);
-				time_verbose = HAL_GetTick();
-			}
-		#endif
+        // --- CÁLCULO DE ALTITUDE (SÓ DEPOIS DE CALIBRADO) ---
+        // Só tenta calcular a altitude se a calibração do solo já terminou (Pref > 0)
+        if (sensor_ptr->pressao_ref > 0.0f) {
+            sensor_ptr->altitude = 44330.0f * (1.0f - powf((sensor_ptr->pressao / sensor_ptr->pressao_ref), 0.190295f));
 
-	    flag_novo_dado = 1; // Avisa o sistema de voo que os dados são seguros e válidos
-
-	} else {
-		#ifdef VERBOSE
-			// Ignora a leitura! Não seta a flag_novo_dado.
-			// O Filtro de Kalman vai apenas "pular" esse ciclo de 10ms e manter a inércia,
-			// salvando o foguete de ser envenenado por um NaN!
-			if(HAL_GetTick() - time_verbose >= 1000){
-				printlnRed("\r\n>>> GLITCH DO SENSOR IGNORADO <<<");
-				time_verbose = HAL_GetTick();
-			}
-		#endif
-	}
+            #ifdef VERBOSE
+                if (HAL_GetTick() - time_verbose >= 1000) {
+                    printlnLGreen("\r\nMS5611: Pref %.2f; P %.2f; T %.2f; A %.2f", sensor_ptr->pressao_ref, sensor_ptr->pressao, sensor_ptr->temperatura, sensor_ptr->altitude);
+                    time_verbose = HAL_GetTick();
+                }
+            #endif
+        }
 
 }
 

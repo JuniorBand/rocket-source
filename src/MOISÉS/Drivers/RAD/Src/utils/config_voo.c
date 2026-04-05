@@ -150,7 +150,14 @@ void setupVoo(SPI_HandleTypeDef *hspi_mem, SPI_HandleTypeDef *hspi_sensor, TIM_H
 			// --- MODO RECUPERACAO (REINICIO NO AR) ---
 			printLYellow("\r\n>>> AVISO: REINICIO EM VOO DETECTADO! RECUPERANDO DADOS... <<<");
 
-			sensor.pressao_ref = rec.pressao_solo;
+			// --- BLINDAGEM DA CAIXA PRETA ---
+			// Se o dado recuperado for corrompido (vácuo ou impossível), usamos o Nível do Mar
+			if (rec.pressao_solo < 300.0f || rec.pressao_solo > 1200.0f) {
+				sensor.pressao_ref = 1013.25f;
+				printLYellow("\r\n>>> ALERTA: Pressao de referencia corrompida. Usando 1013.25 hPa. <<<");
+			} else {
+				sensor.pressao_ref = rec.pressao_solo;
+			}
 
 			// 1. DRENO DE LIXO (Warm-up do Hardware)
 			// Roda a máquina de estados do sensor 10 vezes e joga os dados no lixo.
@@ -202,11 +209,18 @@ void processarLogicaVoo(void) {
 
 		MS5611_ReadData();
 
-		if (sensor.pressao > 300.0f && sensor.pressao < 1200.0f && sensor.temperatura > -40.0f && sensor.temperatura < 85.0f) {
-			filtroKalman.update(&filtroKalman, sensor.altitude, DT, &(dadosVoo.altitudeAtual), &(dadosVoo.velocidadeAtual));
+		#ifdef USE_FILTER
+			if (sensor.pressao > 300.0f && sensor.pressao < 1200.0f && sensor.temperatura > -40.0f && sensor.temperatura < 85.0f) {
+				filtroKalman.update(&filtroKalman, sensor.altitude, DT, &(dadosVoo.altitudeAtual), &(dadosVoo.velocidadeAtual));
+				dadosVoo.temperaturaAtual = sensor.temperatura;
+				dadosVoo.pressaoAtual = sensor.pressao;
+			}
+		#else
 			dadosVoo.temperaturaAtual = sensor.temperatura;
 			dadosVoo.pressaoAtual = sensor.pressao;
-		}
+			dadosVoo.altitudeAtual = sensor.altitude;
+			dadosVoo.velocidadeAtual = 0.0f;
+		#endif
 
 		#ifdef VERBOSE
 			if(HAL_GetTick() - time_verbose >= 1000){
@@ -271,14 +285,18 @@ void processarLogicaVoo(void) {
 
 			case ESTADO_PRONTO:
 				{
+					// Decida se quer registrar logs indefinidamente 
+					// enquanto espera o lançamento, ou só registrar a partir do lançamento.
+					
 					// Espera 1 segundo (100 ticks) APÓS a calibração pro Kalman "acalmar" os cálculos
 					// de velocidade antes de autorizar o lançamento.
 					if (timer_estabilizacao_kalman < 100) {
 						timer_estabilizacao_kalman++;
+						registrarLogVoo();
 						break; // Sai do switch e não tenta decolar
 					}
 
-					registrarLogVoo();
+					//registrarLogVoo();
 
 					// Regras de Lançamento (Blindadas)
 					// Nota: Em testes de bancada, exija uma velocidade de subida "real"
