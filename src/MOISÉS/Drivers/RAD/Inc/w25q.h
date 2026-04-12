@@ -37,11 +37,11 @@ extern const char* PRINT_ESTADO[];
 extern W25Q_State_t sensor_state;
 
 
-void w25qInit(SPI_HandleTypeDef *hspi, TIM_HandleTypeDef *htim, u8 W25Q_CS);
+void w25qInit(SPI_HandleTypeDef *hspi, TIM_HandleTypeDef *htim, GPIO_TypeDef *port, u16 pin_mask);
 void adicionarLogW25Q(RTC_HandleTypeDef *hrtc, DadosVoo_t *dadosVoo);
 void visualizarLogsW25Q(void);
 void visualizarUltimoLogW25Q(void);
-void pararGravacaoW25Q(void);
+void descarregarBuffer(void);
 void apagarLogsW25Q(void);
 void apagarTudoW25Q(void);
 void salvarCaixaPretaW25Q(float pressao_ref, uint32_t status);

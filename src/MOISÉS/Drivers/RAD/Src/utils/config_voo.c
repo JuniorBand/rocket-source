@@ -133,8 +133,8 @@ void setupVoo(SPI_HandleTypeDef *hspi_mem, SPI_HandleTypeDef *hspi_sensor, TIM_H
 	printlnMagenta("\r\n>>> %s DETECTADO <<<", PRINT_ESTADO[ESTADO_CALIBRACAO]);
 	acenderLedPlaca();
 
-	w25qInit(hspi_mem, htim_ms, W25Q_CS_PIN);
-	MS5611_Init(hspi_sensor, htim_ms, &sensor);
+	w25qInit(hspi_mem, htim_ms, W25Q_CS_PORT, W25Q_CS_PIN);
+	MS5611_Init(hspi_sensor, htim_ms, &sensor, MS5611_CS_PORT, MS5611_CS_PIN);
 
 	LKF_Construtor(&filtroKalman);
 	filtroKalman.init(&filtroKalman, &(sensor.altitude), &(dadosVoo.velocidadeAtual));
@@ -376,7 +376,7 @@ void processarLogicaVoo(void) {
 						printlnLGreen("\r\n>>> %s DETECTADO <<<", PRINT_ESTADO[ESTADO_POUSADO]);
 						// -> CAIXA PRETA: Pousou seguro! Desativa a flag para não entrar em recuperação no próximo boot.
 						salvarCaixaPretaW25Q(1013.25f, 0x00000000);
-						pararGravacaoW25Q();
+						descarregarBuffer();
 						flagGravacaoParada = 1;
 						flagFimDeVoo = 1;
 					}
@@ -392,7 +392,7 @@ void processarLogicaVoo(void) {
 						printlnRed("           >>>   %s!   <<<", PRINT_ESTADO[ESTADO_ERRO]);
 						printlnRed("           >>> SISTEMA PARALISADO <<<");
 						printlnRed("=================================================");
-						pararGravacaoW25Q();
+						descarregarBuffer();
 						flagGravacaoParada = 1;
 						flagFimDeVoo = 1;
 					}
@@ -432,7 +432,7 @@ static void verificarErros(void){
     if ( (dadosVoo.estadoAtual >= ESTADO_EM_VOO) \
     		&& ((HAL_GetTick() - seguroVoo.tempo_inicio_ms) >= TEMPO_MAX_VOO_MS) \
     		&& (dadosVoo.estadoAtual != ESTADO_RECUPERACAO) && (!flagGravacaoParada)){
-    	pararGravacaoW25Q();
+    	descarregarBuffer();
     	flagGravacaoParada = 1;
     	printLYellow("\r\nAVISO: Tempo máximo de gravação atingido. Log encerrado.");
     }

@@ -42,7 +42,7 @@
 
 // Defina a macro USE_BUZZER se você tiver um buzzer conectado e quiser usar a 
 // função de beep para feedback sonoro durante a simulação ou voo real.
-#define USE_BUZZER
+//#define USE_BUZZER
 
 // Printa os dados do sensor e do filtro a cada 1 segundo (100 ticks) para debug em tempo real.
 #define VERBOSE

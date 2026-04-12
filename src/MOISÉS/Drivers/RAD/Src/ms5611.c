@@ -63,6 +63,8 @@ static u8 d2_lido = 0; // Flag para garantir que a temperatura real chegou
 static u32 D1;
 static u32 D2_cache = 8000000; // Valor seguro de inicialização
 static MS5611_t *sensor_ptr;
+static GPIO_TypeDef *CS_PORT = 0;
+static u16 CS_PIN = 0;
 
 
 static inline void MS5611_Select(void);
@@ -71,17 +73,19 @@ static void MS5611_Reset(void);
 static void MS5611_Read_PROM(void);
 static void MS5611_CalcularTudo(void);
 
-void MS5611_Init(SPI_HandleTypeDef *hspi, TIM_HandleTypeDef *htim, MS5611_t *sensor_rec) {
+void MS5611_Init(SPI_HandleTypeDef *hspi, TIM_HandleTypeDef *htim, MS5611_t *sensor_rec, GPIO_TypeDef *port, u16 pin_mask) {
     ms5611_spi = hspi;
     ms5611_timer = htim;
     sensor_ptr = sensor_rec;
-
+    CS_PORT = port;
+    CS_PIN = pin_mask;
     MS5611_Reset();
     MS5611_Read_PROM();
 }
 
-static inline void MS5611_Select(void) { writePinLow(MS5611_CS_PORT, MS5611_CS_PIN); }
-static inline void MS5611_Unselect(void) { writePinHigh(MS5611_CS_PORT, MS5611_CS_PIN); }
+static inline void MS5611_Select(void) { writePinLow(CS_PORT, CS_PIN); }
+static inline void MS5611_Unselect(void) { writePinHigh(CS_PORT, CS_PIN); }
+
 
 static void MS5611_Reset(void) {
     u8 res_alt = MS5611_CMD_RESET;

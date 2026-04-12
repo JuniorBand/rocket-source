@@ -53,7 +53,7 @@ extern uint8_t temp_skip;
 extern uint8_t flag_novo_dado;
 
 void MS5611_ReadData(void);
-void MS5611_Init(SPI_HandleTypeDef *hspi, TIM_HandleTypeDef *htim, MS5611_t *sensor_rec);
+void MS5611_Init(SPI_HandleTypeDef *hspi, TIM_HandleTypeDef *htim, MS5611_t *sensor_rec, GPIO_TypeDef *port, u16 pin_mask);
 
 
 

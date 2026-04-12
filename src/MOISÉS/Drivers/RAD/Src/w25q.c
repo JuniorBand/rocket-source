@@ -66,7 +66,7 @@
 #define DELAY 5
 #define PAGE_PROGRAM_MAX 256 // bytes
 #define LOGS_PER_PAGE(nome_struct_t) (PAGE_PROGRAM_MAX/sizeof(nome_struct_t))   // Quantos logs podem ser gravados de uma vez em 256 bytes (1 P�gina da Flash)
-#define TIME_OUT 2
+#define TIME_OUT 500
 
 // ============================================================================
 // INSTRUCOES DO CHIP W25Q (Datasheet)
@@ -83,11 +83,11 @@
 static SPI_HandleTypeDef* w25q_spi;
 static TIM_HandleTypeDef* w25q_timer;
 W25Q_State_t sensor_state = IDLE;
-static volatile u8 timer_ready_flag = 0;
-static u8 w25q_cs = 0;
 u32 currentAddr = 0;
 static LogData_t bufferRAM[LOGS_PER_PAGE(LogData_t)] = {0};
 static u32 bufferIndex = 0;
+static GPIO_TypeDef *CS_PORT = 0;
+static u16 CS_PIN = 0;
 
 
 static void w25qWritePage(void);
@@ -99,21 +99,54 @@ static void w25q_EraseBlock64K(u32 BlockAddr);
 
 
 
-#if defined(W25Q_CS_PORT) && defined(W25Q_CS_PIN)
-	static inline void w25q_CS_LOW(void) { writePinLow(W25Q_CS_PORT, W25Q_CS_PIN); }
-	static inline void w25q_CS_HIGH(void) { writePinHigh(W25Q_CS_PORT, W25Q_CS_PIN); }
-#else
-	#error "W25Q_CS_PORT e/ou W25Q_CS_PIN não foram definidos no main.h!"
-#endif
 
-void w25qInit(SPI_HandleTypeDef *hspi, TIM_HandleTypeDef *htim, u8 W25Q_CS){
+static inline void w25q_CS_LOW(void) { writePinLow(CS_PORT, CS_PIN); }
+static inline void w25q_CS_HIGH(void) { writePinHigh(CS_PORT, CS_PIN); }
+
+void w25qInit(SPI_HandleTypeDef *hspi, TIM_HandleTypeDef *htim,  GPIO_TypeDef *port, u16 pin_mask){
 	w25q_spi = hspi;
 	w25q_timer = htim;
-	w25q_cs = W25Q_CS;
-	recuperarEnderecoW25Q();
+	CS_PORT = port;
+	CS_PIN = pin_mask;
+
+	printlnLCyan("\r\n--- VERIFICANDO INTEGRIDADE DO HARDWARE (W25Q) ---");
+
+	// =========================================================
+	// O POLÍGRAFO PERMANENTE (Sanity Check de Hardware)
+	// =========================================================
+	u8 id_cmd = 0x9F; // Comando JEDEC ID
+	u8 id_res[3] = {0, 0, 0};
+
+	// Pequeno delay pro chip acordar junto com a placa
+	HAL_Delay(10);
+
+	w25q_CS_LOW();
+	HAL_SPI_Transmit(w25q_spi, &id_cmd, 1, TIME_OUT);
+	HAL_SPI_Receive(w25q_spi, id_res, 3, TIME_OUT);
+	w25q_CS_HIGH();
+
+	// Se voltar tudo Zero (Cabo solto) ou tudo F (Pino em curto com VCC)
+	if ((id_res[0] == 0x00 && id_res[1] == 0x00) || (id_res[0] == 0xFF && id_res[1] == 0xFF)) {
+		printlnRed(">>> ERRO FATAL: MEMORIA W25Q NAO RESPONDE! (ID: %02X %02X %02X) <<<", id_res[0], id_res[1], id_res[2]);
+		printlnRed(">>> VERIFIQUE A FIACAO SPI (CS, MISO, MOSI) <<<");
+
+		// Opcional: Você pode forçar o estado do foguete para ERRO aqui se quiser travar o boot!
+		// dadosVoo.estadoAtual = ESTADO_ERRO;
+	} else {
+		printlnLGreen(">>> W25Q ONLINE E SAUDAVEL! (ID: %02X %02X %02X) <<<", id_res[0], id_res[1], id_res[2]);
+
+		// Se o hardware está vivo, aí sim deixamos ele escanear a memória
+		recuperarEnderecoW25Q();
+	}
 }
 
 void visualizarLogsW25Q(void) {
+	// PRECAUÇÃO: Descarrega o buffer da RAM para a Flash física
+	// antes de tentar ler a tabela toda!
+	if (bufferIndex > 0) {
+		descarregarBuffer();
+	}
+
     LogData_t leitura;
     u32 printAddr = 0;
     char buffer_saida[256];
@@ -127,6 +160,9 @@ void visualizarLogsW25Q(void) {
     printlnLCyan("----------|---------------------------------------|----------------|--------------------------------------------------");
 
     while (printAddr < LIMIT) {
+    	// PRECAUÇÃO: Proteção contra cabo solto ou Timeout SPI
+    	memset(&leitura, 0xFF, sizeof(LogData_t));
+
         // Leitura Fisica da Flash W25Q
         w25q_CS_LOW();
         u8 cmd[4] = { CMD_READ_DATA, (printAddr >> 16) & 0xFF, (printAddr >> 8) & 0xFF, printAddr & 0xFF };
@@ -204,6 +240,10 @@ void visualizarUltimoLogW25Q(void){
 
         // Se bufferIndex é zero, o último dado gravado está exatamente 1 struct ATRÁS do currentAddr!
         u32 printAddr = currentAddr - sizeof(LogData_t);
+
+
+        // PRECAUÇÃO: Proteção contra cabo solto ou Timeout SPI
+		memset(&leitura, 0xFF, sizeof(LogData_t));
 
         // Leitura Fisica da Flash W25Q
         w25q_CS_LOW();
@@ -325,17 +365,25 @@ static void w25qWritePage(void) {
 }
 
 
-void pararGravacaoW25Q(void) {
-    // Acesse o buffer RAM e o índice que você declarou como 'static'
-    // dentro de adicionarLog(). Sugiro mover essas duas variáveis para
-    // o escopo global do w25q.c para poder acessá-las aqui.
-
+void descarregarBuffer(void) {
     if (bufferIndex > 0) {
-        w25qWritePage(); // Grava os logs restantes
-        bufferIndex = 0;
-    }
+        // 1. Resgata o último log real e válido que o foguete gerou
+        LogData_t ultimo_log_valido = bufferRAM[bufferIndex - 1];
 
-    //currentAddr = LIMIT; // Trava futuras gravações
+        // 2. Preenche todos os "espaços vazios" para não gravar Zeros
+        for (u32 i = bufferIndex; i < LOGS_PER_PAGE(LogData_t); i++) {
+            bufferRAM[i] = ultimo_log_valido;
+        }
+
+        // 3. O PULO DO GATO: Finge que o buffer tem 8 logs para que
+        // a 'w25qWritePage' envie exatos 256 bytes e não quebre o alinhamento!
+        bufferIndex = LOGS_PER_PAGE(LogData_t);
+
+        // 4. Grava na Flash
+        w25qWritePage();
+
+        bufferIndex = 0; // Reseta para o próximo ciclo
+    }
 }
 
 
@@ -343,11 +391,6 @@ void apagarLogsW25Q(void) {
     char buffer_msg[64];
     printlnLYellow("\r\n--- INICIANDO LIMPEZA DOS LOGS DE VOO (SMART ERASE) ---");
 
-    // 1. Se a memoria ja esta vazia (ponteiro no zero), nao perde tempo!
-    if (currentAddr == 0) {
-        printlnLGreen("A memoria ja esta vazia! Pronto para voo.\r\n");
-        return;
-    }
 
     // 2. Descobre o número do bloco atual para apagar tudo, incluindo ele.
     // Divisão inteira (shift) diz em qual bloco estamos. Multiplicar + 1 dá o limite cravado.
@@ -431,21 +474,22 @@ static void w25q_WriteEnable(void) {
 
 // Trava o código até a memória terminar a operação interna
 static void w25q_WaitForWriteEnd(u32 timeout_ms) {
-	u8 cmd = CMD_READ_STATUS_1; // Instrução Read Status Register-1
-    u8 status = 0;
+    u8 cmd = CMD_READ_STATUS_1;
+    u8 status = 0x01; // <-- PRECAUÇÃO: Assume ocupado por padrão!
     u32 tickstart = HAL_GetTick();
 
     w25q_CS_LOW();
     HAL_SPI_Transmit(w25q_spi, &cmd, 1, TIME_OUT);
     do {
-        // Timeout de 1ms na leitura SPI, quem gerencia o limite de tempo é o tickstart
-        HAL_SPI_Receive(w25q_spi, &status, 1, 1);
-
-        // Proteção anti-travamento: Se o chip demorar demais ou o MISO desconectar (0xFF constante)
-        if ((HAL_GetTick() - tickstart) >= timeout_ms) {
-            break; // Aborta e salva o sistema de travar completamente
+        // PRECAUÇÃO: Se a leitura falhar por causa do USB, mantém ocupado
+        if (HAL_SPI_Receive(w25q_spi, &status, 1, 10) != HAL_OK) {
+            status = 0x01;
         }
-    } while ((status & 0x01) == 0x01); // Fica preso aqui enquanto o bit 0 (BUSY) for 1
+
+        if ((HAL_GetTick() - tickstart) >= timeout_ms) {
+            break;
+        }
+    } while ((status & 0x01) == 0x01);
     w25q_CS_HIGH();
 }
 
@@ -459,6 +503,9 @@ static void recuperarEnderecoW25Q(void) {
 
     // A leitura pula de 256 em 256 bytes, tornando a busca por 4MB quase instantânea.
     while (addr < LIMIT) {
+    	// PRECAUÇÃO: Proteção contra cabo solto ou Timeout SPI
+    	memset(&leitura, 0xFF, sizeof(LogData_t));
+
         w25q_CS_LOW();
         u8 cmd[4] = { 0x03, (addr >> 16) & 0xFF, (addr >> 8) & 0xFF, addr & 0xFF };
         HAL_SPI_Transmit(w25q_spi, cmd, 4, TIME_OUT);
@@ -613,7 +660,7 @@ void gerarVooSimuladoW25Q(void) {
         if (estado == 5 && tempo_ms > 60000) break;
     }
 
-    pararGravacaoW25Q(); // Descarrega os ultimos logs presos no buffer
+    descarregarBuffer(); // Descarrega os ultimos logs presos no buffer
     printlnLGreen("--- VOO SIMULADO GRAVADO COM SUCESSO! ---");
     printlnLCyan("Pressione 'V' para ver a tabela.");
 }
