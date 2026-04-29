@@ -57,8 +57,10 @@ static MS5611_State_t estado_ms5611;
 u32 sensor_timer = 0;
 u8 temp_skip = 0;
 u8 flag_novo_dado = 0;
-static u32 time_verbose = 0;
 static u8 d2_lido = 0; // Flag para garantir que a temperatura real chegou
+#ifdef VERBOSE
+	static u32 time_verbose = 0;
+#endif
 
 static u32 D1;
 static u32 D2_cache = 8000000; // Valor seguro de inicialização

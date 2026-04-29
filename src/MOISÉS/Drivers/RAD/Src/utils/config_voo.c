@@ -191,6 +191,11 @@ void setupVoo(SPI_HandleTypeDef *hspi_mem, SPI_HandleTypeDef *hspi_sensor, TIM_H
 
 	}
 
+	// Se a macro GRAVAR_LOGS nao estiver definida, ativa a flag para impedir qualquer tentativa de gravacao.
+	#ifndef GRAVAR_LOGS
+		flagGravacaoParada = 1;
+	#endif
+
 	apagarLedPlaca();
 }
 
@@ -284,43 +289,45 @@ void processarLogicaVoo(void) {
 					}
 
 			case ESTADO_PRONTO:
-				{
-					// Decida se quer registrar logs indefinidamente 
-					// enquanto espera o lançamento, ou só registrar a partir do lançamento.
-					
-					// Espera 1 segundo (100 ticks) APÓS a calibração pro Kalman "acalmar" os cálculos
-					// de velocidade antes de autorizar o lançamento.
-					if (timer_estabilizacao_kalman < 100) {
-						timer_estabilizacao_kalman++;
-						registrarLogVoo();
-						break; // Sai do switch e não tenta decolar
+					{
+						// 1. Espera 1 segundo para o Kalman estabilizar (sem tentar decolar)
+						if (timer_estabilizacao_kalman < 100) {
+							timer_estabilizacao_kalman++;
+							break;
+						}
+
+						// 2. TIMEOUT DE GRAVAÇÃO (Pad Idle Logging Rate)
+						// A lógica roda a 100Hz. Vamos gravar apenas a 2Hz (2 vezes por segundo).
+						static u8 timer_gravacao_pronto = 0;
+						timer_gravacao_pronto++;
+
+						if (timer_gravacao_pronto >= 50) { // 50 ticks de 10ms = 500ms
+							registrarLogVoo();
+							timer_gravacao_pronto = 0;
+						}
+
+						// 3. Regras de Lançamento (Blindadas - Rodando a 100Hz)
+						if ((dadosVoo.altitudeAtual > ALTITUDE_LANCAMENTO) && (dadosVoo.velocidadeAtual > VELOCIDADE_LANCAMENTO)) {
+
+							dadosVoo.estadoAtual = ESTADO_EM_VOO;
+							seguroVoo.tempo_inicio_ms = HAL_GetTick();
+
+							// Zera o timer para não interferir em um próximo ciclo caso o sistema seja reiniciado
+							timer_gravacao_pronto = 0;
+
+							// Força um registro imediato no exato milissegundo da decolagem
+							registrarLogVoo();
+							salvarCaixaPretaW25Q(sensor.pressao_ref, MAGIC_NUMBER_SIRIUS);
+
+							printlnLCyan("\r\n>>> %s DETECTADO <<<", PRINT_ESTADO[ESTADO_EM_VOO]);
+							beep(200, 1);
+						}
+						break;
 					}
 
-					//registrarLogVoo();
-
-					// Regras de Lançamento (Blindadas)
-					// Nota: Em testes de bancada, exija uma velocidade de subida "real"
-					// (ex: > 1.5 m/s) para evitar que o ruído ative o voo.
-					if ((dadosVoo.altitudeAtual > ALTITUDE_LANCAMENTO) && (dadosVoo.velocidadeAtual > VELOCIDADE_LANCAMENTO)) {
-						// DETECTOU DECOLAGEM!
-						dadosVoo.estadoAtual = ESTADO_EM_VOO;
-						seguroVoo.tempo_inicio_ms = HAL_GetTick();
-
-						// NUNCA reinicie o Kalman AQUI. Se você acabou de decolar,
-						// reiniciar o Kalman apaga o vetor de velocidade e fode a estimativa.
-						// filtroKalman.reiniciar(...); // <<-- REMOVA ISSO SE TIVER
-
-						// Agora sim, começa a gravar
-						registrarLogVoo();
-						salvarCaixaPretaW25Q(sensor.pressao_ref, MAGIC_NUMBER_SIRIUS);
-
-						printlnLCyan("\r\n>>> %s DETECTADO <<<", PRINT_ESTADO[ESTADO_EM_VOO]);
-						beep(200, 1);
-					}
-					break;
-				}
 			case ESTADO_EM_VOO:
 				{
+					registrarLogVoo();
 					// Atualiza altitude máxima
 					if (dadosVoo.altitudeAtual > seguroVoo.altitude_maxima) {
 						seguroVoo.altitude_maxima = dadosVoo.altitudeAtual;
@@ -337,26 +344,29 @@ void processarLogicaVoo(void) {
 					}
 					// =========================================================================
 					// CORREÇÃO: ALTITUDE LOCKOUT (TRAVA DE APOGEU NA BANCADA)
-					// Só permite acionar apogeu se já passamos de 15 metros na vida real!
+					// Só permite acionar apogeu se já passamos de ALTITUDE_MIN_EJECAO na vida real!
 					// =========================================================================
 					else if ( (dadosVoo.altitudeAtual >= (META_APOGEU - DESVIO_MIN)) ||
 								((dadosVoo.altitudeAtual < (seguroVoo.altitude_maxima - DESCIDA_MINIMA))
 								&& (seguroVoo.altitude_maxima > ALTITUDE_MIN_EJECAO))
 							 ) {
 						dadosVoo.estadoAtual = ESTADO_APOGEU;
+						BUZZER_ON();
 					}
 
-					registrarLogVoo();
 					break;
 				}
+
 			case ESTADO_APOGEU:
 				{
 					registrarLogVoo();
 					printlnLYellow("\r\n>>> %s CONFIRMADO <<<", PRINT_ESTADO[ESTADO_APOGEU]);
 					acionarEjecao(PRINT_ESTADO[ESTADO_APOGEU]);
 					dadosVoo.estadoAtual = ESTADO_RECUPERACAO;
+					BUZZER_OFF();
 					break;
 				}
+
 			case ESTADO_RECUPERACAO:
 				{
 					// Detecta Pouso (Baixa alt e Baixa dadosVoo.velocidadeAtual )
@@ -369,6 +379,7 @@ void processarLogicaVoo(void) {
 					}
 					break;
 				}
+
 			case ESTADO_POUSADO:
 				{
 					if (!flagFimDeVoo) {
@@ -384,6 +395,7 @@ void processarLogicaVoo(void) {
 					resgatarFoguete(3000, 1000, &timerPouso);
 					break;
 				}
+
 			case ESTADO_ERRO:
 				{
 
@@ -400,6 +412,7 @@ void processarLogicaVoo(void) {
 					resgatarFoguete(600, 300, &timerErro);
 					break;
 				}
+
 			default: { break; }
 		}
 	}

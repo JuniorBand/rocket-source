@@ -22,7 +22,7 @@
 // ==============================================================================
 // 1. ESTADO DA MISSÃO (Comente para MODO BANCADA, Descomente para MODO VOO)
 // ==============================================================================
-//#define EM_VOO
+#define EM_VOO
 // ^ Se definido: Desliga prints USB para economizar CPU, ativa rotinas rígidas.
 
 // ==============================================================================
@@ -42,10 +42,13 @@
 
 // Defina a macro USE_BUZZER se você tiver um buzzer conectado e quiser usar a 
 // função de beep para feedback sonoro durante a simulação ou voo real.
-//#define USE_BUZZER
+#define USE_BUZZER
 
 // Printa os dados do sensor e do filtro a cada 1 segundo (100 ticks) para debug em tempo real.
-#define VERBOSE
+//#define VERBOSE
+
+// Grava os logs na memória (Caso não queira que ele grave mais, comente)
+#define GRAVAR_LOGS
 
 // ==============================================================================
 // 3. PARÂMETROS FÍSICOS DA MISSÃO
@@ -55,26 +58,34 @@
 #define DT 0.01f
 
 #ifdef EM_VOO
-	#define ALTITUDE_LANCAMENTO  5.0f
-	#define VELOCIDADE_LANCAMENTO 10.0f
-	#define ALTITUDE_POUSO       3.0f
-	#define VELOCIDADE_POUSO     1.5f
-	#define DESCIDA_MINIMA       10.0f
-	#define META_APOGEU          300.0f // Defina a meta em metros aqui
-	#define DESVIO_MIN           1.0f
-	#define ALTITUDE_MIN_EJECAO  20.0f
-	#define TEMPO_MAX_VOO_MS     120000UL  // Tempo máximo de voo para parar de gravar
+	// Essas macros estão com valores ajustados para teste com balão.
+	// --- LANÇAMENTO ---
+	#define ALTITUDE_LANCAMENTO   3.0f    // Seguro para garantir que realmente decolou
+	#define VELOCIDADE_LANCAMENTO 0.5f     // CRÍTICO: Balões sobem a 1~3 m/s. Se deixar 10.0f, a trava nunca vai abrir!
+
+	// --- POUSO E APOGEU ---
+	#define ALTITUDE_POUSO        3.0f
+	#define VELOCIDADE_POUSO      1.5f
+	#define DESCIDA_MINIMA        10.0f    // Mantém 10m. Balões sofrem muito com vento (podem afundar 5m e voltar a subir).
+	#define META_APOGEU           150.0f   // Defina a altura máxima da corda (se for cativo) ou limite alvo.
+	#define DESVIO_MIN            1.0f
+	#define ALTITUDE_MIN_EJECAO   20.0f
+
+	// --- TEMPO MÁXIMO ---
+	#define TEMPO_MAX_VOO_MS      1800000UL // CRÍTICO: 30 minutos (1.800.000 ms)! Balões demoram muito. Os 120s antigos matariam o sistema na metade da subida.
+
 #else // EM_SOLO: testes em bancada
-	#define ALTITUDE_LANCAMENTO  0.7f
-	#define VELOCIDADE_LANCAMENTO 1.0f
-	#define ALTITUDE_POUSO       0.0f
-	#define VELOCIDADE_POUSO     0.5f
+	#define ALTITUDE_LANCAMENTO  1.5f
+	#define VELOCIDADE_LANCAMENTO 0.7f
+	#define ALTITUDE_POUSO       0.5f
+	#define VELOCIDADE_POUSO     0.8f
 	#define DESCIDA_MINIMA       2.0f
-	#define META_APOGEU          3.0f  // Meta menor para testes
+	#define META_APOGEU          9.0f  // Meta menor para testes
 	#define DESVIO_MIN           0.0f
 	#define ALTITUDE_MIN_EJECAO  1.0f
 	#define TEMPO_MAX_VOO_MS     1000000UL
 #endif
+
 
 #ifndef USE_FILTER
 	#define VELOCIDADE_LANCAMENTO 0.0f
@@ -135,5 +146,19 @@ void simularVooAoVivoUSB(void);
 	#define BUZZER_ON()  do { } while(0)
 	#define BUZZER_OFF() do { } while(0)
 #endif
+
+
+/*
+ * Macros do EM_VOO para backup
+	#define ALTITUDE_LANCAMENTO  5.0f
+	#define VELOCIDADE_LANCAMENTO 10.0f
+	#define ALTITUDE_POUSO       3.0f
+	#define VELOCIDADE_POUSO     1.5f
+	#define DESCIDA_MINIMA       10.0f
+	#define META_APOGEU          300.0f // Defina a meta em metros aqui
+	#define DESVIO_MIN           1.0f
+	#define ALTITUDE_MIN_EJECAO  20.0f
+	#define TEMPO_MAX_VOO_MS     120000UL  // Tempo máximo de voo para parar de gravar
+*/
 
 #endif /* CONFIG_VOO_H */
