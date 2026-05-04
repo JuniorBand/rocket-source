@@ -14,6 +14,7 @@
 extern "C" {
 #endif
 
+#include <macros_config.h>
 #include <utils.h>
 #include <main.h>
 #include <usbd_cdc_if.h>

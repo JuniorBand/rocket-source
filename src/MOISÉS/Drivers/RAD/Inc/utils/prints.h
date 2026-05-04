@@ -47,6 +47,7 @@ extern "C" {
 #endif
 
 #include <stdio.h> // Inclui incondicionalmente para não dar warning
+#include <macros_config.h>
 
 #if defined(USE_HALDRIVER) || defined(STM32F4xx) || defined(STM32F401xC) || defined(STM32F411xE) || defined(STM32F401xE)
 	#include <stm32f4xx_hal.h>
@@ -368,44 +369,44 @@ extern "C" {
 		// [ MODO VOO ] - O compilador substitui as funções por NADA (Zero overhead)
 		// ==============================================================================
 
-	#define printDebug(...)    do {} while(0)
+		#define printDebug(...)    do {} while(0)
 		#define printlnDebug(...)  do {} while(0)
 		#define printfDebug(...)   do {} while(0)
 
-	//================================================================================
+		//================================================================================
 
-	#define printReset(...)   do {} while(0)
-	#define printBlack(...)   do {} while(0)
+		#define printReset(...)   do {} while(0)
+		#define printBlack(...)   do {} while(0)
 		#define printRed(...)     do {} while(0)
 		#define printGreen(...)   do {} while(0)
 		#define printYellow(...)  do {} while(0)
 		#define printBlue(...)    do {} while(0)
 		#define printCyan(...)    do {} while(0)
-	#define printMagenta(...) do {} while(0)
-	#define printWhite(...)   do {} while(0)
+		#define printMagenta(...) do {} while(0)
+		#define printWhite(...)   do {} while(0)
 
-	#define printLBlack(...)    do {} while(0)
+		#define printLBlack(...)    do {} while(0)
 		#define printLRed(...)    do {} while(0)
 		#define printLGreen(...)  do {} while(0)
 		#define printLYellow(...) do {} while(0)
 		#define printLBlue(...)   do {} while(0)
-	#define printLMagenta(...)    do {} while(0)
+		#define printLMagenta(...)    do {} while(0)
 		#define printLCyan(...)    do {} while(0)
 		#define printLWhite(...)    do {} while(0)
 
 		// ==============================================================================
 
-	#define printlnReset(...)  do {} while(0)
-	#define printlnBlack(...)  do {} while(0)
-	#define printlnRed(...)     do {} while(0)
+		#define printlnReset(...)  do {} while(0)
+		#define printlnBlack(...)  do {} while(0)
+		#define printlnRed(...)     do {} while(0)
 		#define printlnGreen(...)   do {} while(0)
 		#define printlnYellow(...)  do {} while(0)
 		#define printlnBlue(...)    do {} while(0)
-	#define printlnCyan(...)    do {} while(0)
-	#define printlnMagenta(...) do {} while(0)
-	#define printlnWhite(...)   do {} while(0)
+		#define printlnCyan(...)    do {} while(0)
+		#define printlnMagenta(...) do {} while(0)
+		#define printlnWhite(...)   do {} while(0)
 
-	#define printlnLBlack(...)    do {} while(0)
+		#define printlnLBlack(...)    do {} while(0)
 		#define printlnLRed(...)    do {} while(0)
 		#define printlnLGreen(...)  do {} while(0)
 		#define printlnLYellow(...) do {} while(0)

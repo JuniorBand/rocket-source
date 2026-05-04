@@ -26,6 +26,7 @@
 #ifndef MS5611_H
 #define MS5611_H
 
+#include <macros_config.h>
 #include <utils.h>
 #include <stm32f4xx_hal.h>
 #include <config_voo.h>

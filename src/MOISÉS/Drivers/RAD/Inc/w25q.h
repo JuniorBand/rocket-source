@@ -11,6 +11,7 @@
 #define W25Q_H
 
 #include <stm32f4xx_hal.h>
+#include <macros_config.h>
 #include <utils.h>
 #include <config_voo.h>
 

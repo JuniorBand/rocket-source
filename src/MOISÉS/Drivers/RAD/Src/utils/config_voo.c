@@ -392,7 +392,7 @@ void processarLogicaVoo(void) {
 						flagFimDeVoo = 1;
 					}
 					static u32 timerPouso = 0;
-					resgatarFoguete(3000, 1000, &timerPouso);
+					resgatarFoguete(3000, 1000, &timerPouso); // A cada 2 segundos.
 					break;
 				}
 
@@ -409,7 +409,7 @@ void processarLogicaVoo(void) {
 						flagFimDeVoo = 1;
 					}
 					static u32 timerErro = 0;
-					resgatarFoguete(600, 300, &timerErro);
+					resgatarFoguete(6000, 1000, &timerErro); // A cada 5 segundos.
 					break;
 				}
 

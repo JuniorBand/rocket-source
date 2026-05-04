@@ -84,6 +84,7 @@ typedef unsigned long ulong;
 
 #include <prints.h> // Inclui o prints.h para usar as macros de print, mesmo que sejam "vazias" em EM_VOO.
 
+
 #pragma message("Você está usando o utils.h para facilitar a sua vida ;)")
 
 

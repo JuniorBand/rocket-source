@@ -16,6 +16,7 @@ extern "C" {
 #endif
 
 #include <stm32f4xx_hal.h>
+#include <macros_config.h>
 #include <config_voo.h>
 
 // Verifica qual chip o CubeIDE está compilando e ajusta a Flash
