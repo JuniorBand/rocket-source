@@ -3,7 +3,7 @@
   * @file    config_voo.c
   * @date 	 14 de mar. de 2026
   * @author  Junior Bandeira
-  * @brief   Source code que configura a parte complexa do código do foguete.
+  * @brief   Source code que configura a parte complexa do codigo do foguete.
   ******************************************************************************
 */
 
@@ -79,8 +79,9 @@
 #include <main.h>
 #include <utils.h>
 #include <prints.h>
-#include <ms5611.h>
 #include <math.h>
+#include <ms5611.h>
+#include <lkf.h>
 #include <usb_com.h> // Nao utilizado EM_VOO
 
 #ifdef USE_W25Q
@@ -104,12 +105,12 @@ DadosVoo_t dadosVoo = {0};
 CaixaPreta_t caixaPreta = {0};
 MS5611_t sensor = {0};
 LKF_t filtroKalman = {0};
-static TIM_TypeDef *TIM_MS;
-static RTC_HandleTypeDef *HRTC_SYS_PTR;
 volatile u8 flagTickVoo = 0;
-static u8 contadorFalhasSensor = 0;
 u8 flagGravacaoParada = 0;
 u8 flagFimDeVoo = 0;
+static TIM_TypeDef *TIM_MS;
+static RTC_HandleTypeDef *HRTC_SYS_PTR;
+static u8 contadorFalhasSensor = 0;
 
 #ifdef VERBOSE
 	static u32 time_verbose = 0;
@@ -151,7 +152,7 @@ void setupVoo(SPI_HandleTypeDef *hspi_mem, SPI_HandleTypeDef *hspi_sensor, TIM_H
 			printLYellow("\r\n>>> AVISO: REINICIO EM VOO DETECTADO! RECUPERANDO DADOS... <<<");
 
 			// --- BLINDAGEM DA CAIXA PRETA ---
-			// Se o dado recuperado for corrompido (vácuo ou impossível), usamos o Nível do Mar
+			// Se o dado recuperado for corrompido (vacuo ou impossível), usamos o Nível do Mar
 			if (rec.pressao_solo < 300.0f || rec.pressao_solo > 1200.0f) {
 				sensor.pressao_ref = 1013.25f;
 				printLYellow("\r\n>>> ALERTA: Pressao de referencia corrompida. Usando 1013.25 hPa. <<<");
@@ -160,14 +161,14 @@ void setupVoo(SPI_HandleTypeDef *hspi_mem, SPI_HandleTypeDef *hspi_sensor, TIM_H
 			}
 
 			// 1. DRENO DE LIXO (Warm-up do Hardware)
-			// Roda a máquina de estados do sensor 10 vezes e joga os dados no lixo.
+			// Roda a maquina de estados do sensor 10 vezes e joga os dados no lixo.
 			// Isso purga o barramento SPI de ruídos elétricos gerados pelo religamento da energia.
 			for (int i = 0; i < 10; i++) {
 				MS5611_ReadData();
 				HAL_Delay(10);
 			}
 
-			// 2. Extrai a primeira leitura termicamente estável
+			// 2. Extrai a primeira leitura termicamente estavel
 			if (sensor.pressao > 300.0f && sensor.pressao < 1200.0f) {
 				sensor.altitude = 44330.0f * (1.0f - powf((sensor.pressao / sensor.pressao_ref), 0.190295f));
 			} else {
@@ -206,9 +207,9 @@ void processarLogicaVoo(void) {
 
 		static u32 timer_estabilizacao_kalman = 0;
 
-		// Agora sim, executa a lógica pesada de sensores e flash com tempo garantido
+		// Agora sim, executa a logica pesada de sensores e flash com tempo garantido
 		#ifndef EM_VOO
-			#pragma message("Utilizando conexão via USB.")
+			#pragma message("Utilizando conexao via USB.")
 			processarComandosUSB();
 		#endif
 
@@ -242,7 +243,7 @@ void processarLogicaVoo(void) {
 			case ESTADO_CALIBRACAO:
 				{
 						static u16 ciclos_aquecimento = 0;
-						static double soma_pressao_ref = 0.0f; // Usando double para não perder precisão decimal!
+						static double soma_pressao_ref = 0.0f; // Usando double para nao perder precisao decimal!
 						static u16 amostras_validas = 0;
 
 						// Fase 1: Ignora os primeiros 200 ticks (2 SEGUNDOS INTEIROS) pro chip esquentar
@@ -251,20 +252,20 @@ void processarLogicaVoo(void) {
 						}
 						// Fase 2: Coleta 100 amostras (mais 1 segundo tirando a média perfeita)
 						else if (amostras_validas < 100) {
-							// MURALHA DE FERRO DA CALIBRAÇÃO:
-							// Só aceita somar na média se a pressão for da Terra (entre 300 e 1200)
+							// MURALHA DE FERRO DA CALIBRAÇAO:
+							// So aceita somar na média se a pressao for da Terra (entre 300 e 1200)
 							if (sensor.pressao > 300.0f && sensor.pressao < 1200.0f) {
 								soma_pressao_ref += (double)sensor.pressao;
 								amostras_validas++;
 							}
 							// Se vier glitch > 1200, ele simplesmente ignora o loop e tenta de novo 10ms depois
 						}
-						// Fase 3: Calibração finalizada!
+						// Fase 3: Calibraçao finalizada!
 						else {
-							// Calcula a média com precisão máxima e converte de volta pra float
+							// Calcula a média com precisao maxima e converte de volta pra float
 							sensor.pressao_ref = (float)(soma_pressao_ref / 100.0);
 
-							// Força o cálculo da altitude agora para cravar o 0.00m
+							// Força o calculo da altitude agora para cravar o 0.00m
 							sensor.altitude = 44330.0f * (1.0f - powf((sensor.pressao / sensor.pressao_ref), 0.190295f));
 
 							sensor.altitude = 0.0f;
@@ -296,8 +297,8 @@ void processarLogicaVoo(void) {
 							break;
 						}
 
-						// 2. TIMEOUT DE GRAVAÇÃO (Pad Idle Logging Rate)
-						// A lógica roda a 100Hz. Vamos gravar apenas a 2Hz (2 vezes por segundo).
+						// 2. TIMEOUT DE GRAVAÇAO (Pad Idle Logging Rate)
+						// A logica roda a 100Hz. Vamos gravar apenas a 2Hz (2 vezes por segundo).
 						static u8 timer_gravacao_pronto = 0;
 						timer_gravacao_pronto++;
 
@@ -312,7 +313,7 @@ void processarLogicaVoo(void) {
 							dadosVoo.estadoAtual = ESTADO_EM_VOO;
 							seguroVoo.tempo_inicio_ms = HAL_GetTick();
 
-							// Zera o timer para não interferir em um próximo ciclo caso o sistema seja reiniciado
+							// Zera o timer para nao interferir em um proximo ciclo caso o sistema seja reiniciado
 							timer_gravacao_pronto = 0;
 
 							// Força um registro imediato no exato milissegundo da decolagem
@@ -328,7 +329,7 @@ void processarLogicaVoo(void) {
 			case ESTADO_EM_VOO:
 				{
 					registrarLogVoo();
-					// Atualiza altitude máxima
+					// Atualiza altitude maxima
 					if (dadosVoo.altitudeAtual > seguroVoo.altitude_maxima) {
 						seguroVoo.altitude_maxima = dadosVoo.altitudeAtual;
 						#ifdef VERBOSE
@@ -336,20 +337,25 @@ void processarLogicaVoo(void) {
 						#endif
 					}
 
-					// Verifica falha de tempo primeiro (prioridade máxima de erro)
+					// Verifica falha de tempo primeiro (prioridade maxima de erro)
 					if (HAL_GetTick() - seguroVoo.tempo_inicio_ms > TEMPO_MAX_VOO_MS) {
 						dadosVoo.estadoAtual = ESTADO_ERRO;
 						registrarLogVoo();
 						acionarEjecao("\r\nTIMEOUT DE VOO - APOGEU NAO DETECTADO");
 					}
 					// =========================================================================
-					// CORREÇÃO: ALTITUDE LOCKOUT (TRAVA DE APOGEU NA BANCADA)
-					// Só permite acionar apogeu se já passamos de ALTITUDE_MIN_EJECAO na vida real!
+					// CORREÇAO: ALTITUDE LOCKOUT (TRAVA DE APOGEU NA BANCADA)
+					// So permite acionar apogeu se ja passamos de ALTITUDE_MIN_EJECAO na vida real!
 					// =========================================================================
 					else if ( (dadosVoo.altitudeAtual >= (META_APOGEU - DESVIO_MIN)) ||
-								((dadosVoo.altitudeAtual < (seguroVoo.altitude_maxima - DESCIDA_MINIMA))
-								&& (seguroVoo.altitude_maxima > ALTITUDE_MIN_EJECAO))
+								( (dadosVoo.altitudeAtual < (seguroVoo.altitude_maxima - DESCIDA_MINIMA))
+								&& (seguroVoo.altitude_maxima > ALTITUDE_MIN_EJECAO) )
 							 ) {
+
+						if(!(dadosVoo.altitudeAtual >= (META_APOGEU - DESVIO_MIN))){ // Nao atingiu a meta de apogeu
+							printlnLRed("ATENCAO: QUEDA ANTES DA META DE APOGEU!!!");
+						}
+
 						dadosVoo.estadoAtual = ESTADO_APOGEU;
 						BUZZER_ON();
 					}
@@ -370,8 +376,8 @@ void processarLogicaVoo(void) {
 			case ESTADO_RECUPERACAO:
 				{
 					// Detecta Pouso (Baixa alt e Baixa dadosVoo.velocidadeAtual )
-					if ((dadosVoo.altitudeAtual < ALTITUDE_POUSO) && ((dadosVoo.velocidadeAtual > -VELOCIDADE_POUSO) \
-							&& (dadosVoo.velocidadeAtual < VELOCIDADE_POUSO))) {
+					if ( (dadosVoo.altitudeAtual < ALTITUDE_POUSO) && ( (dadosVoo.velocidadeAtual > -VELOCIDADE_POUSO)
+							&& (dadosVoo.velocidadeAtual < VELOCIDADE_POUSO) ) ) {
 						dadosVoo.estadoAtual = ESTADO_POUSADO;
 					}
 					else {
@@ -385,7 +391,7 @@ void processarLogicaVoo(void) {
 					if (!flagFimDeVoo) {
 						registrarLogVoo();
 						printlnLGreen("\r\n>>> %s DETECTADO <<<", PRINT_ESTADO[ESTADO_POUSADO]);
-						// -> CAIXA PRETA: Pousou seguro! Desativa a flag para não entrar em recuperação no próximo boot.
+						// -> CAIXA PRETA: Pousou seguro! Desativa a flag para nao entrar em recuperaçao no proximo boot.
 						salvarCaixaPretaW25Q(1013.25f, 0x00000000);
 						descarregarBuffer();
 						flagGravacaoParada = 1;
@@ -421,7 +427,7 @@ void processarLogicaVoo(void) {
 
 static void verificarErros(void){
 
-	// Se a pressão for irreal (ex: vácuo absoluto ou leitura morta da SPI)
+	// Se a pressao for irreal (ex: vacuo absoluto ou leitura morta da SPI)
 	if (sensor.pressao < 100.0f) {
 		contadorFalhasSensor++;
 	} else {
@@ -434,7 +440,7 @@ static void verificarErros(void){
 		acionarEjecao("FALHA CRITICA DE COMUNICACAO DO BAROMETRO");
 	}
 
-	// Proteção contra corrupção matemática
+	// Proteçao contra corrupçao matematica
 	if (isnan(dadosVoo.altitudeAtual) || isnan(dadosVoo.velocidadeAtual)) {
 		if (dadosVoo.estadoAtual == ESTADO_EM_VOO) {
 			dadosVoo.estadoAtual = ESTADO_ERRO;
@@ -447,7 +453,7 @@ static void verificarErros(void){
     		&& (dadosVoo.estadoAtual != ESTADO_RECUPERACAO) && (!flagGravacaoParada)){
     	descarregarBuffer();
     	flagGravacaoParada = 1;
-    	printLYellow("\r\nAVISO: Tempo máximo de gravação atingido. Log encerrado.");
+    	printLYellow("\r\nAVISO: Tempo maximo de gravaçao atingido. Log encerrado.");
     }
     return;
 }
@@ -461,12 +467,12 @@ static inline void registrarLogVoo(void) {
 static inline void resgatarFoguete(u32 intervalo, u32 tempo_ligado, u32 *ultimoBeep) {
     u32 tempo_atual = HAL_GetTick();
 
-    // Se passou do intervalo, liga o buzzer e atualiza a marcação de tempo
+    // Se passou do intervalo, liga o buzzer e atualiza a marcaçao de tempo
     if (tempo_atual - *ultimoBeep >= intervalo) {
     	BUZZER_ON();
         *ultimoBeep = tempo_atual;
     }
-    // Desliga o buzzer se já passou o tempo_ligado desde a última marcação
+    // Desliga o buzzer se ja passou o tempo_ligado desde a ultima marcaçao
     else if (tempo_atual - *ultimoBeep >= tempo_ligado) {
         writePinLow(BUZZER_PORT, BUZZER_PIN);
         BUZZER_OFF();
@@ -486,7 +492,7 @@ static inline void resgatarFoguete(u32 intervalo, u32 tempo_ligado, u32 *ultimoB
 		return;
 	}
 #else
-	#pragma message("MOSFET_PORT e MOSFET_PIN não foram definidos no main.h!")
+	#pragma message("MOSFET_PORT e MOSFET_PIN nao foram definidos no main.h!")
 
 	static void acionarEjecao(const char *razao_missao){
 			printlnMagenta("\r\n=========================================================");

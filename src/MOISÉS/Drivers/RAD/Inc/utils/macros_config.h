@@ -41,7 +41,7 @@ Y  * @brief   PAINEL DE CONTROLE DAS MACROS DA MISSÃO
 #define USE_BUZZER
 
 // Printa os dados do sensor e do filtro a cada 1 segundo (100 ticks) para debug em tempo real.
-//#define VERBOSE
+#define VERBOSE
 
 // Permite gravar os logs na memoria (Caso nao queira que ele grave mais: comente)
 #define GRAVAR_LOGS

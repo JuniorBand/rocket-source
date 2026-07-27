@@ -39,10 +39,9 @@ typedef struct MS5611_s {
     float pressao_ref;   		// Pressao salva no momento em que a placa ligou no chao (P0)
 } MS5611_t;
 
-extern MS5611_t sensor;
-
 // Vari�veis de Controle do Sensor (Non-Blocking)
 extern uint32_t sensor_timer;
+
 // Variáveis de estado escondidas do resto do sistema (encapsulamento)
 typedef enum {
     MS_PEDIR_PRESSAO,
