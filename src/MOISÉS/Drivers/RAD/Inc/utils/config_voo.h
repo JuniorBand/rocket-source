@@ -103,7 +103,7 @@ extern u8 flagFimDeVoo;
 
 // Funções que serão definidas em config_voo.c
 
-void beep(u32 duracao, u8 vezes);
+void beep(u32 duracao, u8 vezes); // Só utilizar antes ou pós/fim do processarLogicaVoo, pois o filtro não pode sofrer delays
 void setupVoo(SPI_HandleTypeDef *hspi_mem, SPI_HandleTypeDef *hspi_sensor, TIM_HandleTypeDef *htim_ms, RTC_HandleTypeDef *hrtc_sys);
 void processarLogicaVoo(void);
 void simularVooAoVivoUSB(void);

@@ -108,12 +108,13 @@ LKF_t filtroKalman = {0};
 volatile u8 flagTickVoo = 0;
 u8 flagGravacaoParada = 0;
 u8 flagFimDeVoo = 0;
+static u16 timer_beep = 0;
 static TIM_TypeDef *TIM_MS;
 static RTC_HandleTypeDef *HRTC_SYS_PTR;
 static u8 contadorFalhasSensor = 0;
 
 #ifdef VERBOSE
-	static u32 time_verbose = 0;
+	static u32 timer_verbose = 0;
 #endif
 
 
@@ -207,6 +208,15 @@ void processarLogicaVoo(void) {
 
 		static u32 timer_estabilizacao_kalman = 0;
 
+		// --- GERENCIADOR DE BEEP ASSÍNCRONO ---
+		if (timer_beep > 0) {
+			timer_beep--;
+			if (timer_beep == 0) {
+				BUZZER_OFF();
+			}
+		}
+		// --------------------------------------
+
 		// Agora sim, executa a logica pesada de sensores e flash com tempo garantido
 		#ifndef EM_VOO
 			#pragma message("Utilizando conexao via USB.")
@@ -229,10 +239,10 @@ void processarLogicaVoo(void) {
 		#endif
 
 		#ifdef VERBOSE
-			if(HAL_GetTick() - time_verbose >= 1000){
+			if(HAL_GetTick() - timer_verbose >= 1000){
 				printlnLCyan("\r\nDADOS FILTRADOS: P: %.2f; T: %.2f; A: %.2f; V: %.2f; E: %s", dadosVoo.pressaoAtual, \
 						dadosVoo.temperaturaAtual, dadosVoo.altitudeAtual, dadosVoo.velocidadeAtual, PRINT_ESTADO[dadosVoo.estadoAtual]);
-				time_verbose = HAL_GetTick();
+				timer_verbose = HAL_GetTick();
 			}
 		#endif
 
@@ -276,7 +286,8 @@ void processarLogicaVoo(void) {
 							filtroKalman.reiniciar(&filtroKalman, &(sensor.altitude), &(dadosVoo.velocidadeAtual));
 
 							printlnLCyan("\r\n>>> CALIBRACAO CONCLUIDA! Pref: %.2f hPa <<<", sensor.pressao_ref);
-							beep(500, 1);
+							BUZZER_ON();
+							timer_beep = 50;
 
 							dadosVoo.estadoAtual = ESTADO_PRONTO;
 							registrarLogVoo();
@@ -321,7 +332,8 @@ void processarLogicaVoo(void) {
 							salvarCaixaPretaW25Q(sensor.pressao_ref, MAGIC_NUMBER_SIRIUS);
 
 							printlnLCyan("\r\n>>> %s DETECTADO <<<", PRINT_ESTADO[ESTADO_EM_VOO]);
-							beep(200, 1);
+							BUZZER_ON();
+							timer_beep = 50;
 						}
 						break;
 					}
@@ -358,6 +370,7 @@ void processarLogicaVoo(void) {
 
 						dadosVoo.estadoAtual = ESTADO_APOGEU;
 						BUZZER_ON();
+						timer_beep = 50;
 					}
 
 					break;
