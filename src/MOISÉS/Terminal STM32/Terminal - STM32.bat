@@ -1,0 +1,6 @@
+@echo off
+echo Verificando atualizacoes do RAD...
+python "C:\Users\bande\Downloads\teste_baixar_github.py"
+
+echo Abrindo o terminal...
+start "" "D:\Program Files\teraterm5\ttermpro.exe"

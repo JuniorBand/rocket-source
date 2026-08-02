@@ -18,7 +18,7 @@ Y  * @brief   PAINEL DE CONTROLE DAS MACROS DA MISSÃO
 // ==============================================================================
 // 1. ESTADO DA MISSÃO (Comente para MODO BANCADA, Descomente para MODO VOO)
 // ==============================================================================
-#define EM_VOO // Pode usar a IDE para definir o EM_VOO.
+//#define EM_VOO // Pode usar a IDE para definir o EM_VOO.
 // ^ Se definido: Desliga prints USB para economizar CPU, ativa rotinas rígidas.
 
 // ==============================================================================
