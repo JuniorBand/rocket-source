@@ -3,7 +3,7 @@
   * @file    macros_config.h
   * @date 	 3 de mai. de 2026
   * @author  Junior Bandeira
-Y  * @brief   PAINEL DE CONTROLE DAS MACROS DA MISSÃO
+  * @brief   PAINEL DE CONTROLE DAS MACROS DA MISSÃO
   * Ative ou desative as macros abaixo para alterar o comportamento
   * do firmware em tempo de compilação.
   ******************************************************************************

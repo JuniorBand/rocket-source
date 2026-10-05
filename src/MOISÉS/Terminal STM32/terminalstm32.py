@@ -222,6 +222,8 @@ def verificar_e_baixar_atualizacao(pasta_download):
 
     organizar_arquivos(caminho_arquivo, pasta_download)
     salvar_versao_local(versao_mais_recente)
+    print("\nNão esqueça de fazer o upload do novo código para o STM32!")
+    input("Clique enter para continuar...")
 
 # ==============================================================================
 # FUNÇÃO PROFISSONAL PARA CRIAR ATALHO NO DESKTOP (A CORREÇÃO ESTÁ AQUI)
