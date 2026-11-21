@@ -1,0 +1,279 @@
+/*
+  ******************************************************************************
+  * @file    utils.h
+  * @date    3 de mar. de 2026
+  * @author  Junior Bandeira
+  * @brief   Canivete Suico do RAD: Tipos estritos, Endianness e GPIO Bare Metal.
+  ******************************************************************************
+*/
+
+/* ==============================================================================
+ * MANUAL DA ARQUITETURA DE UTILIDADES (UTILS)
+ * ==============================================================================
+ *
+ * DESCRICAO GERAL:
+ * Este header eh a fundacao de baixo nivel do firmware. Ele garante que o
+ * codigo seja portatil e extremamente rapido, bypassando as limitacoes da HAL
+ * da ST sempre que a performance critica for exigida.
+ *
+ * 1. TIPAGEM ESTRITA (MISRA-C Style):
+ * Redefine os tipos padroes (uint8_t, int32_t) para u8, i32, etc. Isso
+ * mantem o codigo limpo, melhora a legibilidade matricial e garante que as
+ * variaveis tenham o mesmo tamanho independente do compilador.
+ *
+ * 2. ENDIANNESS CONVERTERS (Tratamento de Sensores):
+ * Sensores SPI/I2C (como o MS5611) frequentemente enviam dados "de tras
+ * pra frente" (Big Endian). Estas funcoes inlines processam bytes puros
+ * e reconstroem os numeros de 16, 24 e 32 bits usando operacoes de shift bit
+ * a bit (<<), ja lidando com a extensao do bit de sinal matematico.
+ *
+ * 3. BARE METAL GPIO (Velocidade da Luz):
+ * Em vez de usar a funcao nativa 'HAL_GPIO_WritePin' (que executa dezenas de
+ * ifs e gasta ciclos de clock), este arquivo manipula diretamente os registradores
+ * BSRR e ODR do ARM Cortex-M4. Um 'writePinHigh' custa exatamente 1 ciclo de clock.
+ * ==============================================================================
+ */
+
+#ifndef UTILS_H
+#define UTILS_H
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#include <stdint.h>
+
+typedef int8_t i8;
+typedef int16_t i16;
+typedef int32_t i32;
+typedef int64_t i64;
+typedef uint8_t u8;
+typedef uint16_t u16;
+typedef uint32_t u32;
+typedef uint64_t u64;
+typedef unsigned long ulong;
+
+// 2. DETECÇÃO DE PLATAFORMA (Cross-platform)
+#if defined(ARDUINO)
+    // Se a flag ARDUINO existir, inclui a base do Arduino/ESP
+    #include <Arduino.h>
+
+	typedef const __FlashStringHelper *FlashStringPtr;
+
+#elif defined(STM32F411xE) || defined(STM32F401xC) || defined(STM32F401xE) || defined(USE_HAL_DRIVER)
+    // Se as flags da ST existirem, inclui a HAL
+    #include <stm32f4xx_hal.h>
+
+    // Como estamos no STM32, incluímos o main.h para ter acesso aos #define de pinos.
+    // Lembre-se: O main.h não deve dar include em arquivos como lkf.h ou config_voo.h!
+    #include <main.h>
+
+	#ifdef STM32F411xE
+		#pragma message("Você está utilizando o STM32F411.")
+		#include <stm32f411xe.h>
+	#endif
+
+	#ifdef STM32F401xC
+		#pragma message("Você está utilizando o STM32F401.")
+		#include <stm32f401xc.h>
+	#endif
+
+#else
+    #error "Plataforma não reconhecida! Verifique as configurações do compilador."
+#endif
+
+
+
+#include <prints.h> // Inclui o prints.h para usar as macros de print, mesmo que sejam "vazias" em EM_VOO.
+
+
+#pragma message("Você está usando o utils.h para facilitar a sua vida ;)")
+
+
+
+// ==============================================================================
+// CONVERSÕES DE ENDIANNESS (LITTLE ENDIAN)
+// ==============================================================================
+
+// --- Unsigned (Sem Sinal) ---
+static inline u16 transf_u16_litend(const u8 *ptr, u32 n) {
+    return (u16)((ptr[n + 1] << 8) | ptr[n]);
+}
+
+static inline u32 transf_u24_litend(const u8 *ptr, u32 n) {
+    return (u32)((ptr[n + 2] << 16) | (ptr[n + 1] << 8) | ptr[n]);
+}
+
+static inline u32 transf_u32_litend(const u8 *ptr, u32 n) {
+    return (u32)((ptr[n + 3] << 24) | (ptr[n + 2] << 16) | (ptr[n + 1] << 8) | ptr[n]);
+}
+
+// --- Signed (Com Sinal) ---
+static inline i16 transf_16_litend(const u8 *ptr, u32 n) {
+    return (i16)((ptr[n + 1] << 8) | ptr[n]);
+}
+
+static inline i32 transf_24_litend(const u8 *ptr, u32 n) {
+    i32 val = (i32)((ptr[n + 2] << 16) | (ptr[n + 1] << 8) | ptr[n]);
+    // Extensão de sinal: Se o 24º bit for 1 (negativo), preenche o resto com 1s.
+    if (val & 0x00800000) {
+        val |= 0xFF000000;
+    }
+    return val;
+}
+
+static inline i32 transf_32_litend(const u8 *ptr, u32 n) {
+    return (i32)((ptr[n + 3] << 24) | (ptr[n + 2] << 16) | (ptr[n + 1] << 8) | ptr[n]);
+}
+
+
+// ==============================================================================
+// CONVERSÕES DE ENDIANNESS (BIG ENDIAN)
+// ==============================================================================
+
+// --- Unsigned (Sem Sinal) ---
+static inline u16 transf_u16_bigend(const u8 *ptr, u32 n) {
+    return (u16)((ptr[n] << 8) | ptr[n + 1]);
+}
+
+static inline u32 transf_u24_bigend(const u8 *ptr, u32 n) {
+    return (u32)((ptr[n] << 16) | (ptr[n + 1] << 8) | ptr[n + 2]);
+}
+
+static inline u32 transf_u32_bigend(const u8 *ptr, u32 n) {
+    return (u32)((ptr[n] << 24) | (ptr[n + 1] << 16) | (ptr[n + 2] << 8) | ptr[n + 3]);
+}
+
+// --- Signed (Com Sinal) ---
+static inline i16 transf_16_bigend(const u8 *ptr, u32 n) {
+    return (i16)((ptr[n] << 8) | ptr[n + 1]);
+}
+
+static inline i32 transf_24_bigend(const u8 *ptr, u32 n) {
+    i32 val = (i32)((ptr[n] << 16) | (ptr[n + 1] << 8) | ptr[n + 2]);
+    // Extensão de sinal: Se o 24º bit for 1 (negativo), preenche o resto com 1s.
+    if (val & 0x00800000) {
+        val |= 0xFF000000;
+    }
+    return val;
+}
+
+static inline i32 transf_32_bigend(const u8 *ptr, u32 n) {
+    return (i32)((ptr[n] << 24) | (ptr[n + 1] << 16) | (ptr[n + 2] << 8) | ptr[n + 3]);
+}
+
+
+
+/* Antigas:
+// Transforma de um u8 *ptr em um número 32-bit, 16-bit e 24-bit, singned ou unsigned.
+
+
+// -> Little Endian:
+#define TRANSF_16_BIT_LITEND(ptr, n)  ((i16)ptr[n + 1] << 8 | ptr[n])
+#define TRANSF_24_BIT_LITEND(ptr, n) ((i32)ptr[n + 2] << 16 | (i32)ptr[n + 1] << 8 | ptr[n])
+#define TRANSF_32_BIT_LITEND(ptr, n) ((i32)ptr[n + 3] << 24 | (i32)ptr[n + 2] << 16 | (i32)ptr[n + 1] << 8 | ptr[n])
+#define TRANSF_U16_BIT_LITEND(ptr, n)  ((u16)ptr[n + 1] << 8 | ptr[n])
+#define TRANSF_U24_BIT_LITEND(ptr, n) ((u32)ptr[n + 2] << 16 | (u32)ptr[n + 1] << 8 | ptr[n])
+#define TRANSF_U32_BIT_LITEND(ptr, n) ((u32)ptr[n + 3] << 24 | (u32)ptr[n + 2] << 16 | (u32)ptr[n + 1] << 8 | ptr[n])
+
+// -> Big Endian:
+#define TRANSF_16_BIT_BIGEND(ptr, n)  ((i16)ptr[n] << 8 | ptr[n + 1])
+#define TRANSF_24_BIT_BIGEND(ptr, n) ((i32)ptr[n] << 16 | (i32)ptr[n + 1] << 8 | ptr[n + 2])
+#define TRANSF_32_BIT_BIGEND(ptr, n) ((i32)ptr[n] << 24 | (i32)ptr[n + 1] << 16 | (i32)ptr[n + 2] << 8 | ptr[n + 3])
+#define TRANSF_U16_BIT_BIGEND(ptr, n)  ((u16)ptr[n] << 8 | ptr[n + 1])
+#define TRANSF_U24_BIT_BIGEND(ptr, n) ((u32)ptr[n] << 16 | (u32)ptr[n + 1] << 8 | ptr[n + 2])
+#define TRANSF_U32_BIT_BIGEND(ptr, n) ((u32)ptr[n] << 24 | (u32)ptr[n + 1] << 16 | (u32)ptr[n + 2] << 8 | ptr[n + 3])
+*/
+
+
+#if !defined(MIN) || !defined(MAX)
+	#define MIN(a, b) (a < b) ? a : b
+	#define MAX(a, b) (a < b) ? b : a
+#endif
+
+extern const char* ESTADO[];
+
+
+//=============================================================================
+// <<<<<< GPIO UTILITIES >>>>>>
+//=============================================================================
+
+#if defined(USE_HALDRIVER) || defined(STM32F4xx) || defined(STM32F401xC) || defined(STM32F411xE) || defined(STM32F401xE)
+
+	// OBS: PIN_MASK é 0x1UL << (PIN_NUM) e __builtin_ctz(PIN_MASK) retorna o numero do pino (ex: 5 para 0x20, 6 para 0x40)
+
+	// Configura registradores de 2 bits (MODER, OSPEEDR, PUPDR) usando PIN_MASK
+	#define GPIO_CONFIG_2BIT(PORT, PIN_MASK, REG, VALUE) \
+		((PORT)->REG = ((PORT)->REG & ~(0x3UL << (__builtin_ctz(PIN_MASK) * 2))) | ((VALUE) << (__builtin_ctz(PIN_MASK) * 2)))
+
+	// Configura registradores de 1 bit (OTYPER) usando PIN_MASK
+	#define GPIO_CONFIG_1BIT(PORT, PIN_MASK, REG, VALUE) \
+		((PORT)->REG = ((PORT)->REG & ~(0x1UL << __builtin_ctz(PIN_MASK))) | ((VALUE) << __builtin_ctz(PIN_MASK)))
+
+
+	// Macros de Operacao (Leitura / Escrita)
+	// Macros otimizados para usar as definições nativas (ex: GPIO_PIN_13)
+
+	#include "stm32f4xx_hal.h" // Necessário para reconhecer o GPIO_TypeDef
+
+
+
+	static inline void writePinHigh(GPIO_TypeDef *PORT, u16 PIN_MASK) {
+		PORT->BSRR = PIN_MASK;
+	}
+
+	static inline void writePinLow(GPIO_TypeDef *PORT, u16 PIN_MASK) {
+		PORT->BSRR = (uint32_t)PIN_MASK << 16;
+	}
+
+	static inline void togglePin(GPIO_TypeDef *PORT, u16 PIN_MASK) {
+		PORT->ODR ^= PIN_MASK;
+	}
+
+	static inline u8 readPin(GPIO_TypeDef *PORT, u16 PIN_MASK) {
+		// Parênteses corrigidos para garantir que o AND ocorra antes da comparação
+		return ((PORT->IDR & PIN_MASK) != 0);
+	}
+
+	/*
+	 *VERSÕES ANTIGAS COMO MACROS
+	#define GPIO_WRITE_HIGH(PORT, PIN_MASK) ((PORT)->BSRR = (PIN_MASK))
+	#define GPIO_WRITE_LOW(PORT, PIN_MASK)  ((PORT)->BSRR = (uint32_t)(PIN_MASK) << 16)
+	#define GPIO_TOGGLE(PORT, PIN_MASK)     ((PORT)->ODR ^= (PIN_MASK))
+	#define GPIO_READ(PORT, PIN_MASK)       (((PORT)->IDR & (PIN_MASK)) != 0)
+	*/
+
+	// --------------------------------------------------------------------------
+	// CONTROLE VISUAL DE DEBUG (PC13 - Logica Invertida)
+	// --------------------------------------------------------------------------
+	#ifndef EM_VOO
+		// Em bancada, os LEDs funcionam normalmente para feedback visual
+		static inline void acenderLedPlaca(void) { writePinLow(GPIOC, GPIO_PIN_13); }
+		static inline void apagarLedPlaca(void)  { writePinHigh(GPIOC, GPIO_PIN_13); }
+		static inline void piscarLedPlaca(void)  { togglePin(GPIOC, GPIO_PIN_13); }
+	#else
+		// Em Voo, desligamos os LEDs da CPU para economizar energia, mas
+		// os pinos do MOSFET e Buzzer seguem operando intactos nas funcoes acima!
+		#define acenderLedPlaca(...) do { } while(0)
+		#define apagarLedPlaca(...)  do { } while(0)
+		#define piscarLedPlaca(...)  do { } while(0)
+	#endif
+#endif
+
+
+
+
+
+
+/* GPIO UTILITIES */
+
+
+
+
+
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* UTILS_H */
