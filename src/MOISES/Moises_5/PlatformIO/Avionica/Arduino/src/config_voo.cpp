@@ -1,7 +1,7 @@
 /*
   ******************************************************************************
   * @file    config_voo.cpp
-  * @brief   Implementação da Máquina de Estados, Ejeção, Pré-Trigger e Recuperação
+  * @brief   Implementacao da Maquina de Estados, Ejecao, Pre-Trigger e Recuperacao
   ******************************************************************************
 */
 
@@ -36,10 +36,11 @@ extern bool watchdogStarted;
 static u8 pendingLogFlags = 0;
 static u8 contadorFalhasSensor = 0;
 static u8 launchConfirmCount = 0;
+static u8 apogeeConfirmCount = 0;
 static u8 landingConfirmCount = 0;
 static u32 launchCandidateTimeMs = 0;
 
-#ifdef VERBOSE
+#ifdef TELEM_VERBOSE
     static u32  timerVerboseMs = 0;
 #endif
 
@@ -233,6 +234,7 @@ static void iniciarVoo(u32 launchTimeMs) {
 
     seguroVoo.tempoInicioMs = launchTimeMs;
     seguroVoo.altitudeMaxima = dadosVoo.altitudeM;
+    apogeeConfirmCount = 0;
     dadosVoo.estadoAtual = ESTADO_EM_VOO;
 
     // Descarrega o histórico pré-lançamento armazenado na RAM
@@ -267,7 +269,7 @@ static void encerrarVooComSeguranca(EstadoSistema estadoFinal, const char *mensa
         flagFimDeVoo = true;
         sistemaBloqueadoPorLog = true;
 
-        printlnLGreen("\r\n%s", mensagem);
+        printflnLGreen("\r\n%s", mensagem);
         printflnLCyan("Altitude Maxima atingida: %.2f m | Registros salvos: %lu",
                       seguroVoo.altitudeMaxima, (unsigned long)w25qGetRecordCount());
     }
@@ -336,8 +338,10 @@ static void verificarErros(void) {
 // INICIALIZAÇÃO E REARMAMENTO
 // ==============================================================================
 static void flushSerialBoot(void) {
-    if (Serial) {
-        Serial.flush();
+    if (!Serial) { return; }
+    const u32 t0 = millis();
+    while (Serial.availableForWrite() < 63 && (millis() - t0) < 15UL) {
+        feedWatchdog();
     }
 }
 
@@ -348,6 +352,7 @@ bool recalibrarERearmarSistema(void) {
     memset(&seguroVoo, 0, sizeof(seguroVoo));
     preRingClear();
     launchConfirmCount = 0;
+    apogeeConfirmCount = 0;
     landingConfirmCount = 0;
     contadorFalhasSensor = 0;
     pendingLogFlags = 0;
@@ -355,7 +360,7 @@ bool recalibrarERearmarSistema(void) {
     sistemaBloqueadoPorLog = false;
 
 #ifdef GRAVAR_LOGS
-    flagGravacaoParada = false;
+    flagGravacaoParada = (w25qGetCapacity() == 0);
 #else
     flagGravacaoParada = true;
 #endif
@@ -426,6 +431,14 @@ void forcarErroSistema(const char *motivo) {
         w25qDescarregarBuffer();
     } else {
         flagGravacaoParada = true;
+    }
+}
+
+void forcarPousoManual(void) {
+    if (seguroVoo.tempoInicioMs > 0UL && !flagFimDeVoo) {
+        encerrarVooComSeguranca(ESTADO_POUSADO, ">>> [POUSO] ENCERRADO MANUALMENTE VIA USB <<<");
+    } else {
+        printlnLYellow("[AVISO] Nenhum voo ativo em andamento para encerrar.");
     }
 }
 
@@ -642,7 +655,7 @@ void processarLogicaVoo(void) {
         dadosVoo.velocidadeMs = 0.0f;
     #endif
 
-    #ifdef VERBOSE
+    #ifdef TELEM_VERBOSE
         if (((now - timerVerboseMs) >= 1000) && !printsBloqueadosPorVoo()) {
             printflnLCyan("[TELEM] %s | Alt: %.2f m | Vel: %.2f m/s | P: %.1f Pa | T: %.2f C",
                         PRINT_ESTADO[dadosVoo.estadoAtual],
@@ -683,12 +696,17 @@ void processarLogicaVoo(void) {
 
             if (dadosVoo.altitudeM > seguroVoo.altitudeMaxima) {
                 seguroVoo.altitudeMaxima = dadosVoo.altitudeM;
+                apogeeConfirmCount = 0;
+            } else if ((dadosVoo.altitudeM < (seguroVoo.altitudeMaxima - DESCIDA_MINIMA)) &&
+                       (seguroVoo.altitudeMaxima > ALTITUDE_MIN_EJECAO)) {
+                ++apogeeConfirmCount;
+            } else {
+                apogeeConfirmCount = 0;
             }
 
             const bool atingiuMeta  = (dadosVoo.altitudeM >= (META_APOGEU - DESVIO_MIN));
-            const bool iniciouQueda = (dadosVoo.altitudeM < (seguroVoo.altitudeMaxima - DESCIDA_MINIMA)) &&
-                                      (seguroVoo.altitudeMaxima > ALTITUDE_MIN_EJECAO);
-            const bool timeoutPara = ((now - seguroVoo.tempoInicioMs) >= TEMPO_MAX_PARAQUEDAS_MS);
+            const bool iniciouQueda = (apogeeConfirmCount >= APOGEE_CONFIRM_SAMPLES);
+            const bool timeoutPara  = ((now - seguroVoo.tempoInicioMs) >= TEMPO_MAX_PARAQUEDAS_MS);
 
             if (atingiuMeta || iniciouQueda || timeoutPara) {
                 if (!atingiuMeta && !timeoutPara && !printsBloqueadosPorVoo()) {
@@ -696,6 +714,7 @@ void processarLogicaVoo(void) {
                 } else if (timeoutPara && !printsBloqueadosPorVoo()) {
                     printlnLYellow("[ALERTA] Timeout de paraquedas atingido!");
                 }
+                apogeeConfirmCount = 0;
                 dadosVoo.estadoAtual = ESTADO_APOGEU;
             }
             break;
@@ -706,7 +725,7 @@ void processarLogicaVoo(void) {
             registrarLog(dadosVoo, ts);
 
             if (!printsBloqueadosPorVoo()) {
-                printlnLYellow("\r\n>>> %s CONFIRMADO <<<", PRINT_ESTADO[ESTADO_APOGEU]);
+                printflnLYellow("\r\n>>> %s CONFIRMADO <<<", PRINT_ESTADO[ESTADO_APOGEU]);
             }
             acionarDeploy("APOGEU DETECTADO");
 
@@ -838,7 +857,8 @@ void simularVooAoVivoUSB(void) {
                 LYELLOW, PRINT_ESTADO[st], LMAGENTA,
                 LGREEN, barra_grafica);
 
-            printf("%s%s\r\n", buffer_saida, RESET);
+            printDebug(buffer_saida);
+            printlnReset("");
         }
 
         delay(10);
@@ -859,7 +879,7 @@ void simularVooAoVivoUSB(void) {
     snprintf(buffer_saida, sizeof(buffer_saida),
             "ESTATISTICAS FINAIS:\r\n- Altitude Maxima: %.2f m; Tempo de Voo: %lu s; Runtime: %lu s.",
             alt_max, tempo_voo_s, runtime_s);
-    printlnLGreen("%s", buffer_saida);
+    printflnLGreen("%s", buffer_saida);
     printlnMagenta("======================================================================================================================");
     printlnLGreen("\r\n--- SIMULACAO CONCLUIDA. SISTEMA EM REPOUSO. ---");
 }

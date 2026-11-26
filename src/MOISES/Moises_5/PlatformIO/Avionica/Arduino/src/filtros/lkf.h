@@ -1,14 +1,16 @@
 /*
   ******************************************************************************
   * @file    lkf.h
-  * @brief   Header do Linear Kalman Filter (Altitude e Velocidade Vertical)
+  * @date 	 3 de mar. de 2026
+  * @authors  Levi e Junior Bandeira
+  * @brief   Header do Linear Kalman Filter para STM32.
   ******************************************************************************
 */
 
 #ifndef LKF_H
 #define LKF_H
 
-#include "../macros_config.h"
+#include <macros_config.h>
 
 typedef struct LKF {
     float X[2];      // Estado: [0] = Altitude (m), [1] = Velocidade Vertical (m/s)

@@ -1,3 +1,10 @@
+/*
+  ******************************************************************************
+  * @file    telemetria_com.h
+  * @brief   Interface de Envio e Recebimento de Comandos para a Telemetria
+  ******************************************************************************
+*/
+
 #ifndef TELEMETRIA_COM_H_
 #define TELEMETRIA_COM_H_
 
@@ -11,6 +18,17 @@
 #define TELEM_CMD_DADOS         'D'  // Solicita pacote completo (37 bytes)
 #define TELEM_CMD_RESUMO        'R'  // Solicita pacote compacto de apogeu/eventos (22 bytes)
 #define TELEM_CMD_PING          'P'  // Teste de enlace (responde ACK de 6 bytes)
+
+
+constexpr u8 MSG_TELEM_SELETIVA     = 0x04;
+
+constexpr u8 TELEM_CAMPO_ALTITUDE   = 0x01;
+constexpr u8 TELEM_CAMPO_VELOCIDADE = 0x02;
+constexpr u8 TELEM_CAMPO_PRESSAO    = 0x04;
+constexpr u8 TELEM_CAMPO_TEMP       = 0x08;
+constexpr u8 TELEM_CAMPO_ESTADO     = 0x10;
+constexpr u8 TELEM_CAMPO_ACCEL      = 0x20;
+constexpr u8 TELEM_CAMPO_GYRO       = 0x40;
 
 // Identificadores dos pacotes enviados pelo OBC
 typedef enum {
@@ -61,5 +79,6 @@ void telemetriaEnviar(void);
 void telemetriaEnviarPacoteDados(void);
 void telemetriaEnviarPacoteResumo(void);
 void telemetriaReceber(void);
+void telemetriaEnviarSeletiva(u8 mask);
 
 #endif /* TELEMETRIA_COM_H_ */

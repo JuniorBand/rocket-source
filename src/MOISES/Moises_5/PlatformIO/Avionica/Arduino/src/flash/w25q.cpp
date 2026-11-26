@@ -1,7 +1,7 @@
 /*
   ******************************************************************************
   * @file    w25q.cpp
-  * @brief   Implementação do driver SPI Flash W25Q64 com Buffer Paginado e Smart Erase
+  * @brief   Implementação do driver SPI Flash W25Q com Buffer Paginado e Smart Erase
   ******************************************************************************
 */
 
@@ -24,6 +24,15 @@ static u32 recordCount = 0;
 static LogData_t bufferRAM[LOGS_PER_PAGE];
 static u8 bufferIndex = 0;
 
+static inline bool printsBloqueadosPorVoo(void) {
+#ifdef EM_VOO
+    return (dadosVoo.estadoAtual >= ESTADO_EM_VOO) &&
+           (dadosVoo.estadoAtual <= ESTADO_RECUPERACAO);
+#else
+    return false;
+#endif
+}
+
 // ==============================================================================
 // FUNÇÕES INTERNAS DE BUSCA E PAGINAÇÃO
 // ==============================================================================
@@ -38,9 +47,7 @@ static inline bool isErased(const u8 *bytes, size_t length) {
 static bool slotEstaApagado(u32 addr, bool &apagado) {
     u8 raw[sizeof(LogData_t)];
 
-    // Le um bloco de 32 bytes da Flash e verifica se está todo preenchido com 0xFF
-    // Le a partir do addr e escreve em raw, retornando true se a leitura foi bem-sucedida
-    if (!flash.readByteArray(addr, raw, sizeof(raw))) { 
+    if (!flash.readByteArray(addr, raw, sizeof(raw))) {
         return false;
     }
 
@@ -59,8 +66,8 @@ static bool buscarUltimoSlotGravado(u32 totalSlots, u32 &slotsUsados) {
         if (!slotEstaApagado(W25Q_DATA_START_ADDR + mid * sizeof(LogData_t), apagado)) {
             return false;
         }
-        if (apagado){ high = mid; }
-        else { low  = (u32)(mid + 1); }
+        if (apagado) { high = mid; }
+        else         { low  = (u32)(mid + 1); }
 
         feedWatchdog();
     }
@@ -94,10 +101,28 @@ static bool w25qFlushPage(void) {
 bool w25qInit(void) {
     pinMode(PIN_FLASH_CS, OUTPUT);
     digitalWrite(PIN_FLASH_CS, HIGH);
+    pinMode(PA6, INPUT_PULLUP); // Evita MISO flutuando sem chip na bancada
 
     SPI.begin();
+
+    // Sondagem rápida JEDEC ID (0x9F) antes do flash.begin() para evitar loop infinito
+    SPI.beginTransaction(SPISettings(1000000, MSBFIRST, SPI_MODE0));
+    digitalWrite(PIN_FLASH_CS, LOW);
+    SPI.transfer(0x9F);
+    const u32 jedecProbe = ((u32)SPI.transfer(0x00) << 16) |
+                           ((u32)SPI.transfer(0x00) << 8)  |
+                           (u32)SPI.transfer(0x00);
+    digitalWrite(PIN_FLASH_CS, HIGH);
+    SPI.endTransaction();
+
+    if (jedecProbe == 0x000000UL || jedecProbe == 0xFFFFFFUL) {
+        printflnRed("[ERRO CRITICO] Memoria SPI Flash W25Q nao encontrada (JEDEC: 0x%06lX)!",
+                    (unsigned long)jedecProbe);
+        return false;
+    }
+
     if (!flash.begin()) {
-        printlnRed("[ERRO CRITICO] Memoria SPI Flash W25Q64 nao encontrada!");
+        printlnRed("[ERRO CRITICO] Falha ao inicializar driver SPIMemory!");
         return false;
     }
 
@@ -137,7 +162,7 @@ bool w25qIsFull(void)         { return (recordCount + bufferIndex) >= maxRecords
 
 bool w25qGravarHeader(float pressaoRefPa, float tempRefC, const i16 gyroBias[3], bool gyroCal) {
     FlightHeader_t hdr;
-    memset(&hdr, 0, sizeof(hdr)); // Zera o hdr
+    memset(&hdr, 0, sizeof(hdr));
 
     hdr.magic = HEADER_MAGIC_FLT1;
     hdr.version = HEADER_FORMAT_VERSION;
@@ -148,7 +173,7 @@ bool w25qGravarHeader(float pressaoRefPa, float tempRefC, const i16 gyroBias[3],
     hdr.temperaturaRefC = tempRefC;
 
     if (gyroBias) {
-        for (u8 i = 0; i < 3; ++i){ hdr.gyroBiasRaw[i] = gyroBias[i]; }
+        for (u8 i = 0; i < 3; ++i) { hdr.gyroBiasRaw[i] = gyroBias[i]; }
     }
 
     hdr.crc8 = crc8((const u8 *)&hdr, sizeof(hdr) - 1);
@@ -163,7 +188,7 @@ void w25qSetStatusVoo(u32 status) {
 
 CaixaPretaInfo_t w25qLerCaixaPreta(void) {
     CaixaPretaInfo_t info;
-    memset(&info, 0, sizeof(info)); // Zera o info e assume valores default caso a leitura falhe
+    memset(&info, 0, sizeof(info));
     info.header.pressaoRefPa    = 101325.0f;
     info.header.temperaturaRefC = 25.0f;
 
@@ -174,7 +199,7 @@ CaixaPretaInfo_t w25qLerCaixaPreta(void) {
     }
 
     FlightHeader_t candidate;
-    memcpy(&candidate, rawHeader, sizeof(candidate)); // copia os bytes lidos para a estrutura candidate
+    memcpy(&candidate, rawHeader, sizeof(candidate));
 
     const bool crcOk = (candidate.crc8 == crc8(rawHeader, sizeof(candidate) - 1));
     if (candidate.magic == HEADER_MAGIC_FLT1 &&
@@ -184,7 +209,6 @@ CaixaPretaInfo_t w25qLerCaixaPreta(void) {
         info.header = candidate;
         info.headerValido = true;
     } else if (!isErased(rawHeader, sizeof(rawHeader)) || recordCount > 0) {
-        // Se o cabeçalho não é válido, mas a Flash não está vazia, assume que os dados são desconhecidos
         info.dadosDesconhecidos = true;
     }
 
@@ -219,10 +243,7 @@ bool w25qDescarregarBuffer(void) {
 }
 
 bool w25qLerRegistro(u32 index, LogData_t *dest) {
-    if (!dest){ return false; }
-    
-    // index = recordCount + bufferIndex - 1 -> ultimo registro
-    // Se o índice solicitado é maior ou igual ao número total de registros, retorna false
+    if (!dest) { return false; }
 
     // Se o índice solicitado ainda estiver no buffer RAM não descarregado
     if (index >= recordCount && index < (recordCount + bufferIndex)) {
@@ -230,7 +251,7 @@ bool w25qLerRegistro(u32 index, LogData_t *dest) {
         return true;
     }
 
-    if (index >= recordCount){ return false; }
+    if (index >= recordCount) { return false; }
 
     const u32 addr = W25Q_DATA_START_ADDR + index * sizeof(LogData_t);
     return flash.readByteArray(addr, (uint8_t *)dest, sizeof(LogData_t));
@@ -252,7 +273,7 @@ bool w25qApagarLogs(void) {
     for (u32 b = 0; b < numBlocos; ++b) {
         const u32 blockAddr = b * W25Q_BLOCK_SIZE;
         if (!flash.eraseBlock64K(blockAddr)) {
-            printlnRed("[ERRO] Falha ao apagar bloco 0x%06lX!", (unsigned long)blockAddr);
+            printflnRed("[ERRO] Falha ao apagar bloco 0x%06lX!", (unsigned long)blockAddr);
             return false;
         }
         feedWatchdog();
@@ -272,7 +293,7 @@ bool w25qApagarTudo(void) {
 
     for (u32 b = 0; b < totalBlocos; ++b) {
         if (!flash.eraseBlock64K(b * W25Q_BLOCK_SIZE)) {
-            printlnRed("[ERRO] Falha no apagamento completo no bloco %lu.", (unsigned long)b);
+            printflnRed("[ERRO] Falha no apagamento completo no bloco %lu.", (unsigned long)b);
             return false;
         }
         feedWatchdog();
@@ -282,7 +303,7 @@ bool w25qApagarTudo(void) {
     recordCount = 0;
     bufferIndex = 0;
 
-    printlnLGreen("[OK] Chip W25Q64 completamente formatado.");
+    printlnLGreen("[OK] Chip W25Q completamente formatado.");
     return true;
 }
 
@@ -291,6 +312,7 @@ bool w25qApagarTudo(void) {
 // ==============================================================================
 
 void w25qVisualizarLogsTabela(void) {
+    if (printsBloqueadosPorVoo()) { return; }
     w25qDescarregarBuffer();
 
     if (recordCount == 0) {
@@ -319,10 +341,10 @@ void w25qVisualizarLogsTabela(void) {
         for (int k = 0; k < numBarras; ++k) barras[k] = '#';
 
         u8 st = reg.stateAndFlags & 0x0F;
-        if (st > 6){ st = 6; }
+        if (st > 6) { st = 6; }
 
-        const float tempoS = reg.timestampMs / 1000.0f;
-        const float tempC  = reg.temperatura_cC / 100.0f;
+        const float tempoS  = reg.timestampMs / 1000.0f;
+        const float tempC   = reg.temperatura_cC / 100.0f;
         const float presHpa = reg.pressaoPa / 100.0f;
 
         snprintf(linha, sizeof(linha),
@@ -335,8 +357,8 @@ void w25qVisualizarLogsTabela(void) {
             LYELLOW, PRINT_ESTADO[st], LMAGENTA,
             LGREEN, barras);
 
-        Serial.print(linha);
-        Serial.println(RESET);
+        printDebug(linha);
+        printlnReset("");
 
         feedWatchdog();
     }
@@ -346,72 +368,76 @@ void w25qVisualizarLogsTabela(void) {
 }
 
 void w25qVisualizarLogsCSV(void) {
+    if (printsBloqueadosPorVoo()) { return; }
     w25qDescarregarBuffer();
 
     if (recordCount == 0) {
-        Serial.println(F("[AVISO] Nenhum registro gravado na Flash."));
+        printlnRed("\r\n[AVISO] Nenhum registro gravado na Flash.");
         return;
     }
 
     CaixaPretaInfo_t info = w25qLerCaixaPreta();
 
-    Serial.println();
-    Serial.println(F("================ DADOS DO VOO (CSV) ================"));
-    Serial.print(F("# PressaoBase_Pa: ")); Serial.println(info.header.pressaoRefPa, 1);
-    Serial.print(F("# TempBase_C: "));     Serial.println(info.header.temperaturaRefC, 2);
-    Serial.println(F("Registro,Tempo_ms,Estado,Altitude_m,Velocidade_ms,Pressao_Pa,Temp_C,AccX_ms2,AccY_ms2,AccZ_ms2,GyroX_dps,GyroY_dps,GyroZ_dps,Flags,CRC"));
+    printlnDebug("");
+    printlnDebug("================ DADOS DO VOO (CSV) ================");
+    printDebug("# PressaoBase_Pa: "); printlnDebug(info.header.pressaoRefPa, 1);
+    printDebug("# TempBase_C: ");     printlnDebug(info.header.temperaturaRefC, 2);
+    printlnDebug("Registro,Tempo_ms,Estado,Altitude_m,Velocidade_ms,Pressao_Pa,Temp_C,AccX_ms2,AccY_ms2,AccZ_ms2,GyroX_dps,GyroY_dps,GyroZ_dps,Flags,CRC");
 
     for (u32 i = 0; i < recordCount; ++i) {
         LogData_t r;
-        if (!w25qLerRegistro(i, &r)){ break; }
+        if (!w25qLerRegistro(i, &r)) { break; }
 
         const bool crcOk    = (r.crc8 == crc8((const u8 *)&r, sizeof(r) - 1));
         const u8   estado   = r.stateAndFlags & 0x0F;
         const u8   flags    = r.stateAndFlags & 0xF0;
         const bool imuValid = (flags & LOG_FLAG_IMU_VALID) != 0;
 
-        Serial.print(i + 1); Serial.print(',');
-        Serial.print(r.timestampMs); Serial.print(',');
-        Serial.print(estado); Serial.print(',');
-        Serial.print(r.altitudeM, 2); Serial.print(',');
-        Serial.print(r.velocidadeMs, 2); Serial.print(',');
-        Serial.print(r.pressaoPa, 1); Serial.print(',');
-        Serial.print(r.temperatura_cC / 100.0f, 2); Serial.print(',');
+        printDebug(i + 1); printDebug(',');
+        printDebug(r.timestampMs); printDebug(',');
+        printDebug(estado); printDebug(',');
+        printDebug(r.altitudeM, 2); printDebug(',');
+        printDebug(r.velocidadeMs, 2); printDebug(',');
+        printDebug(r.pressaoPa, 1); printDebug(',');
+        printDebug(r.temperatura_cC / 100.0f, 2); printDebug(',');
 
         for (u8 a = 0; a < 3; ++a) {
-            if (imuValid) Serial.print(r.accelRaw[a] * MPU_ACC_TO_MS2, 3);
-            Serial.print(',');
+            if (imuValid) { printDebug(r.accelRaw[a] * MPU_ACC_TO_MS2, 3); }
+            printDebug(',');
         }
         for (u8 a = 0; a < 3; ++a) {
             if (imuValid) {
                 const i32 corr = (i32)r.gyroRaw[a] - (info.header.mpuCalibrated ? info.header.gyroBiasRaw[a] : 0);
-                Serial.print(corr * MPU_GYR_TO_DPS, 3);
+                printDebug(corr * MPU_GYR_TO_DPS, 3);
             }
-            Serial.print(',');
+            printDebug(',');
         }
 
-        Serial.print(flags, HEX); Serial.print(',');
-        Serial.println(crcOk ? F("OK") : F("CRC_ERR"));
+        printDebug(flags, HEX); printDebug(',');
+        printlnDebug(crcOk ? "OK" : "CRC_ERR");
 
         feedWatchdog();
     }
-    Serial.println(F("===================================================="));
+    printlnDebug("====================================================");
 }
 
 void w25qVisualizarUltimoLog(void) {
-    const u32 total = w25qGetRecordCount(); // recordCount + bufferIndex
-    if (!total) { // total == 0
+    if (printsBloqueadosPorVoo()) { return; }
+
+    const u32 total = w25qGetRecordCount();
+    if (!total) {
         printlnRed("\r\n[AVISO] Nenhum registro na RAM ou Flash.");
         return;
     }
 
     LogData_t reg;
-    if (!w25qLerRegistro(total - 1, &reg)){ return; }
+    if (!w25qLerRegistro(total - 1, &reg)) { return; }
 
     u8 st = reg.stateAndFlags & 0x0F;
-    if (st > 6){ st = 6; }
+    if (st > 6) { st = 6; }
+    const u8 flags = reg.stateAndFlags & 0xF0;
 
-    printflnLCyan("\r\n[ULTIMO LOG #%lu] T: %.2fs | Alt: %.2fm | Vel: %.2fm/s | P: %.1fPa | T: %.2fC | Estado: %s",
+    printflnLCyan("\r\n[ULTIMO LOG #%lu] T: %.2fs | Alt: %.2fm | Vel: %.2fm/s | P: %.1fPa | Temp: %.2fC | Estado: %s",
                   (unsigned long)total,
                   reg.timestampMs / 1000.0f,
                   reg.altitudeM,
@@ -419,11 +445,22 @@ void w25qVisualizarUltimoLog(void) {
                   reg.pressaoPa,
                   reg.temperatura_cC / 100.0f,
                   PRINT_ESTADO[st]);
+
+    printflnWhite("  Flags: 0x%02X [%s%s%s%s] | Accel: [%d, %d, %d] | Gyro: [%d, %d, %d]",
+                  flags,
+                  (flags & LOG_FLAG_PRETRIGGER) ? "PRE " : "",
+                  (flags & LOG_FLAG_LAUNCH)     ? "LAUNCH " : "",
+                  (flags & LOG_FLAG_RESUMED)    ? "RESUMED " : "",
+                  (flags & LOG_FLAG_IMU_VALID)  ? "IMU_OK" : "SEM_IMU",
+                  reg.accelRaw[0], reg.accelRaw[1], reg.accelRaw[2],
+                  reg.gyroRaw[0],  reg.gyroRaw[1],  reg.gyroRaw[2]);
 }
 
 void w25qGerarVooSimulado(void) {
+    if (printsBloqueadosPorVoo()) { return; }
+
     printlnLYellow("\r\n--- GERANDO VOO SIMULADO NA FLASH (SITL 20Hz) ---");
-    if (!w25qApagarLogs()){ return; }
+    if (!w25qApagarLogs()) { return; }
 
     const i16 biasZero[3] = {0, 0, 0};
     w25qGravarHeader(101325.0f, 30.0f, biasZero, false);
@@ -460,7 +497,7 @@ void w25qGerarVooSimulado(void) {
         }
 
         alt += vel * DT;
-        if (alt < 0.0f){ alt = 0.0f; }
+        if (alt < 0.0f) { alt = 0.0f; }
 
         LogData_t mock;
         memset(&mock, 0, sizeof(mock));

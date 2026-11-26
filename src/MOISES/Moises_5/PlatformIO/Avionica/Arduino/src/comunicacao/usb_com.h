@@ -1,7 +1,7 @@
 /*
   ******************************************************************************
   * @file    usb_com.h
-  * @brief   Interface de Comandos e Diagnóstico via USB CDC (Estação Solo)
+  * @brief   Interface de Comandos e Diagnostico via USB CDC (Estacao Solo)
   ******************************************************************************
 */
 

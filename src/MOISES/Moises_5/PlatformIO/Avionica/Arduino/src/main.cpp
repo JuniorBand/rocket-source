@@ -1,7 +1,7 @@
 /*
   ******************************************************************************
   * @file    main.cpp
-  * @brief   Ponto de Entrada Principal do Computador de Voo (STM32F411 / F401)
+  * @brief   Ponto de Entrada Principal do Computador de Voo (STM32F411)
   ******************************************************************************
 */
 
@@ -16,24 +16,11 @@
 #include <comunicacao/telemetria_com.h>
 
 bool watchdogStarted = false;
-
-void feedWatchdog(void) {
-    if (watchdogStarted) {
-        IWatchdog.reload();
-    }
-}
-
 static HardwareTimer timerVoo(TIM2);
 
-inline static void onTimerTickVoo(void) {
-    flagTickVoo = 1;
-}
-
-inline static void flushUSB(void) {
-    if (Serial) {
-        Serial.flush();
-    }
-}
+void feedWatchdog(void);
+inline static void onTimerTickVoo(void);
+inline static void flushUSB(void);
 
 void setup(void) {
     // 1. Verifica imediatamente se o boot foi causado pelo Watchdog
@@ -104,10 +91,30 @@ void loop(void) {
     #endif
 
     processarLogicaVoo();
-    #ifdef RECEBER_DADOS_TELEMETRIA
+    #ifdef RECEBER_COMANDOS_RADIO_TTL
         telemetriaReceber();
     #endif
-    telemetriaEnviar();
+    #ifdef ENVIAR_DADOS_CONTINUOS_RADIO_TTL
+        telemetriaEnviar();
+    #endif
     usbComProcessar();
     beeperUpdate();
+}
+
+void feedWatchdog(void) {
+    if (watchdogStarted) {
+        IWatchdog.reload();
+    }
+}
+
+inline static void onTimerTickVoo(void) {
+    flagTickVoo = 1;
+}
+
+inline static void flushUSB(void) {
+    if (!Serial){ return; }
+    const u32 t0 = millis();
+    while (Serial.availableForWrite() < 63 && (millis() - t0) < 15UL) {
+        feedWatchdog();
+    }
 }

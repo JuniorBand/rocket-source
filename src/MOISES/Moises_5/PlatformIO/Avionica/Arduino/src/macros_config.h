@@ -1,7 +1,7 @@
 /*
   ******************************************************************************
   * @file    macros_config.h
-  * @brief   PAINEL DE CONTROLE DE HARDWARE E MISSÃO (STM32F411 + ARDUINO)
+  * @brief   PAINEL DE CONTROLE DE HARDWARE E MISSAO (STM32F411 + ARDUINO)
   ******************************************************************************
 */
 
@@ -15,29 +15,21 @@
 #define USE_W25Q            // Usa memória Flash SPI externa W25Q64
 #define USE_FILTER          // Ativa o Filtro de Kalman (altitude + velocidade)
 #define USE_BUZZER          // Ativa feedback sonoro no buzzer
-#define VERBOSE             // Imprime telemetria formatada na USB (5 Hz)
+#define TELEM_VERBOSE       // Imprime telemetria formatada na USB (5 Hz)
 #define GRAVAR_LOGS         // Habilita gravação na Flash
 #define BMP_USE_HW_SPI 1    // 1 = SPI3 em hardware (PB3/PB4/PB5); 0 = software
 
-// Permite enviar dados de telemetria via UART2 (GPS/Rádio) para estação remota
-//#define MANDAR_DADOS_TELEMETRIA
+// Permite enviar dados o tempo todo via telemetria via UART2 (GPS/Rádio) para estação remota
+#define ENVIAR_DADOS_CONTINUOS_RADIO_TTL
 
 // Permite receber comandos de telemetria via UART2 (GPS/Rádio) da estação remota
-//#define RECEBER_DADOS_TELEMETRIA
+#define RECEBER_COMANDOS_RADIO_TTL
 
 // Permite colocar cores ou tirar as cores dos prints (Caso nao queira cores: comente)
 #define PRINT_COLORS
 
 // Permite usar prints no código (Caso nao queira prints: comente)
 #define USE_PRINTS
-
-
-// // Comente esta linha quando compilar no STM32CubeIDE (HAL)
-// #define USE_ARDUINO_UTILS
-
-// #ifdef USE_ARDUINO_UTILS
-//     #include <Arduino.h>
-// #endif
 
 // ==============================================================================
 // 2. PINAGEM DA PCB (STM32F411 BLACK PILL)

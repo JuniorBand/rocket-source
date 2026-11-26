@@ -1,7 +1,7 @@
 /*
   ******************************************************************************
   * @file    config_voo.h
-  * @brief   Painel de Controle da Missão e Máquina de Estados do Foguete (RAD)
+  * @brief   Painel de Controle da Missao e Maquina de Estados do Foguete
   ******************************************************************************
 */
 
@@ -20,7 +20,6 @@
 // ==============================================================================
 #ifdef EM_VOO
     constexpr float ALTITUDE_LANCAMENTO      = 10.0f;
-    constexpr float VELOCIDADE_LANCAMENTO    = 6.0f;
     constexpr float ALTITUDE_POUSO           = 30.0f;
     constexpr float VELOCIDADE_POUSO         = 2.5f;
     constexpr float DESCIDA_MINIMA           = 20.0f;
@@ -34,7 +33,6 @@
     #pragma message("Parametros de EM_VOO carregados.")
 #else
     constexpr float ALTITUDE_LANCAMENTO      = 2.5f;
-    constexpr float VELOCIDADE_LANCAMENTO    = 0.7f;
     constexpr float ALTITUDE_POUSO           = 1.5f;
     constexpr float VELOCIDADE_POUSO         = 1.0f;
     constexpr float DESCIDA_MINIMA           = 3.0f;
@@ -48,12 +46,18 @@
     #pragma message("Parametros de EM_SOLO (bancada) carregados.")
 #endif
 
-#ifndef USE_FILTER
-    #undef VELOCIDADE_LANCAMENTO
-    constexpr float VELOCIDADE_LANCAMENTO    = 0.0f;
+#ifdef USE_FILTER
+    #ifdef EM_VOO
+        constexpr float VELOCIDADE_LANCAMENTO = 6.0f;
+    #else
+        constexpr float VELOCIDADE_LANCAMENTO = 0.7f;
+    #endif
+#else
+    constexpr float VELOCIDADE_LANCAMENTO = 0.0f;
 #endif
 
 constexpr u8  LAUNCH_CONFIRM_SAMPLES  = 3;    // 3 amostras seguidas (150 ms) para confirmar decolagem
+constexpr u8  APOGEE_CONFIRM_SAMPLES  = 3;    // 3 amostras seguidas (150 ms) de queda para confirmar apogeu
 constexpr u8  LANDING_CONFIRM_SAMPLES = 40;   // 40 amostras seguidas (2.0 s) para confirmar pouso
 constexpr u32 PYRO_PULSE_DURATION_MS  = 2000; // Duração do pulso nos MOSFETs IRLZ44N (2 s)
 
@@ -114,6 +118,7 @@ void processarLogicaVoo(void);
 bool recalibrarERearmarSistema(void);
 void forcarErroSistema(const char *motivo);
 void simularVooAoVivoUSB(void);
+void forcarPousoManual(void);
 
 // Controle sonoro (Buzzer ativo em HIGH no pino PB1)
 void beeperClear(void);

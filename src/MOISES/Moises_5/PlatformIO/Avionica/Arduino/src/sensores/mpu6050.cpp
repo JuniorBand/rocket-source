@@ -1,3 +1,10 @@
+/*
+  ******************************************************************************
+  * @file    mpu6050.cpp
+  * @brief   Implementacao do Driver para o sensor MPU6050
+  ******************************************************************************
+*/
+
 #include <sensores/mpu6050.h>
 #include <math.h>
 #include <string.h>

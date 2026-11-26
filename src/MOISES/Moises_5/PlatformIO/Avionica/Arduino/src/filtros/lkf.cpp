@@ -1,7 +1,9 @@
 /*
   ******************************************************************************
-  * @file    lkf.cpp
-  * @brief   Implementação do Linear Kalman Filter para STM32
+  * @file    lkf.c
+  * @date 	 3 de mar. de 2026
+  * @authors Levi e Junior Bandeira
+  * @brief   Source code do Linear Kalman Filter para STM32.
   ******************************************************************************
 */
 

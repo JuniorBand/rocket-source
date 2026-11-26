@@ -38,6 +38,7 @@
  * Exemplo: printlnLYellow("Altitude: %.2f m | Velocidade: %.2f", alt, vel);
  * ==============================================================================
  */
+ 
 #ifndef PRINTS_H
 #define PRINTS_H
 
@@ -49,14 +50,13 @@
 	#include <main.h>
 #elif defined(ARDUINO)
 	#include <Arduino.h>
-	#pragma GCC warning "Inclua o header do seu main file se quiser, cuidado com dependência circular de headers."
+	#pragma message("Inclua o header do seu main file se quiser, cuidado com dependência circular de headers.")
 	//#include <header_do_seu_main.h> // Inclua se quiser, cuidado com dependência circular de headers.
 #endif
 
 #ifdef __cplusplus
 extern "C" {    
 #endif
-
 
 #ifdef STM32F411xE
 	#pragma message("Você está utilizando o STM32F411.")
@@ -118,7 +118,6 @@ extern "C" {
   #pragma message("Usando prints coloridos.")
 //###########################################################################################################
 
-  // MACROS PARA ARDUINO (Serial.print) - Compatível com Arduino Uno/Mega/Nano e também com ESP32, ESP8266, STM32 usando Serial.print (Arduino.h)
   #ifdef ARDUINO
     #pragma message("Utilizando Arduino.h.")
 
@@ -226,7 +225,7 @@ extern "C" {
     #else
       #pragma message("USE_PRINTS não definido: prints via USB desativados.")
       // ==============================================================================
-      // [ MODO VOO ] - O compilador substitui as funções por NADA (Zero overhead)
+      // O compilador substitui as funções por NADA (Zero overhead)
       // ==============================================================================
 
       // MACROS DE DEBUG PADRÃO (Sem cor)
@@ -276,41 +275,50 @@ extern "C" {
       #define printlnLMagenta(...) do { } while(0)
       #define printlnLWhite(...)   do { } while(0)
 
+      #define printfReset(fmt, ...)    do { } while(0)
+      #define printfBlack(fmt, ...)    do { } while(0)
+      #define printfRed(fmt, ...)      do { } while(0)
+      #define printfGreen(fmt, ...)    do { } while(0)
+      #define printfYellow(fmt, ...)   do { } while(0)
+      #define printfBlue(fmt, ...)     do { } while(0)
+      #define printfCyan(fmt, ...)     do { } while(0)
+      #define printfMagenta(fmt, ...)  do { } while(0)
+      #define printfWhite(fmt, ...)    do { } while(0)
 
-      #if defined(ESP32) || defined(ESP8266) || defined(ARDUINO_ARCH_STM32)
-      // ==============================================================================
-        #define printfRed(fmt, ...)     do {} while(0)
-        #define printfGreen(fmt, ...)   do {} while(0)
-        #define printfYellow(fmt, ...)  do {} while(0)
-        #define printfBlue(fmt, ...)    do {} while(0)
+      #define printfLBlack(fmt, ...)   do { } while(0)
+      #define printfLRed(fmt, ...)     do { } while(0)
+      #define printfLGreen(fmt, ...)   do { } while(0)
+      #define printfLYellow(fmt, ...)  do { } while(0)
+      #define printfLBlue(fmt, ...)    do { } while(0)
+      #define printfLMagenta(fmt, ...) do { } while(0)
+      #define printfLCyan(fmt, ...)    do { } while(0)
+      #define printfLWhite(fmt, ...)   do { } while(0)
 
-        #define printfLRed(fmt, ...)    do {} while(0)
-        #define printfLGreen(fmt, ...)  do {} while(0)
-        #define printfLYellow(fmt, ...) do {} while(0)
-        #define printfLBlue(fmt, ...)   do {} while(0)
-        #define printfLCyan(fmt, ...)   do {} while(0)
-        #define printfWhite(fmt, ...)   do {} while(0)
+      #define printflnReset(fmt, ...)    do { } while(0)
+      #define printflnBlack(fmt, ...)    do { } while(0)
+      #define printflnRed(fmt, ...)      do { } while(0)
+      #define printflnGreen(fmt, ...)    do { } while(0)
+      #define printflnYellow(fmt, ...)   do { } while(0)
+      #define printflnBlue(fmt, ...)     do { } while(0)
+      #define printflnCyan(fmt, ...)     do { } while(0)
+      #define printflnMagenta(fmt, ...)  do { } while(0)
+      #define printflnWhite(fmt, ...)    do { } while(0)
 
-        // ==============================================================================
-        #define printflnRed(fmt, ...)     do {} while(0)
-        #define printflnGreen(fmt, ...)   do {} while(0)
-        #define printflnYellow(fmt, ...)  do {} while(0)
-        #define printflnBlue(fmt, ...)    do {} while(0)
-
-        #define printflnLRed(fmt, ...)    do {} while(0)
-        #define printflnLGreen(fmt, ...)  do {} while(0)
-        #define printflnLYellow(fmt, ...) do {} while(0)
-        #define printflnLBlue(fmt, ...)   do {} while(0)
-        #define printflnLCyan(fmt, ...)   do {} while(0)
-        #define printflnWhite(fmt, ...)   do {} while(0)
-      #endif
+      #define printflnLBlack(fmt, ...)   do { } while(0)
+      #define printflnLRed(fmt, ...)     do { } while(0)
+      #define printflnLGreen(fmt, ...)   do { } while(0)
+      #define printflnLYellow(fmt, ...)  do { } while(0)
+      #define printflnLBlue(fmt, ...)    do { } while(0)
+      #define printflnLMagenta(fmt, ...) do { } while(0)
+      #define printflnLCyan(fmt, ...)    do { } while(0)
+      #define printflnLWhite(fmt, ...)   do { } while(0)
     #endif
-  #endif /* ARDUINO */
+  /* FIM DO ARDUINO */
 
-  //###########################################################################################################
+    //###########################################################################################################
 
-  // Para STM32, ESP32 etc, usando printf via USB CDC.
-  #if defined(USE_HALDRIVER) || defined(STM32F4xx) || defined(STM32F401xC) || defined(STM32F411xE) || defined(STM32F401xE)
+  // Para STM32, usando printf via USB CDC.
+  #elif defined(USE_HALDRIVER) || defined(STM32F4xx) || defined(STM32F401xC) || defined(STM32F411xE) || defined(STM32F401xE)
 
     #define printDevID() do { printf("%x", HAL_GetDEVID()); } while(0)
 
@@ -321,52 +329,51 @@ extern "C" {
       #define printDebug(var, ...)    do { printf(var, ##__VA_ARGS__); } while(0)
       #define printlnDebug(var, ...)  do { printf(var "\r\n", ##__VA_ARGS__); } while(0)
     
-              // ==============================================================================
-              // MACROS BLINDADAS (STM32/HAL nativo)
-              // ==============================================================================
+      // ==============================================================================
+      // MACROS BLINDADAS (STM32/HAL nativo)
+      // ==============================================================================
 
-        #define printReset(var, ...)    do { printf("%s", RESET); printf(var, ##__VA_ARGS__); printf("%s", RESET); } while(0)
-        #define printBlack(var, ...)    do { printf("%s", BLACK); printf(var, ##__VA_ARGS__); printf("%s", RESET); } while(0)
-        #define printRed(var, ...)      do { printf("%s", RED); printf(var, ##__VA_ARGS__); printf("%s", RESET); } while(0)
-        #define printGreen(var, ...)    do { printf("%s", GREEN); printf(var, ##__VA_ARGS__); printf("%s", RESET); } while(0)
-        #define printYellow(var, ...)   do { printf("%s", YELLOW); printf(var, ##__VA_ARGS__); printf("%s", RESET); } while(0)
-        #define printBlue(var, ...)     do { printf("%s", BLUE); printf(var, ##__VA_ARGS__); printf("%s", RESET); } while(0)
-        #define printMagenta(var, ...)  do { printf("%s", MAGENTA); printf(var, ##__VA_ARGS__); printf("%s", RESET); } while(0)
-        #define printCyan(var, ...)     do { printf("%s", CYAN); printf(var, ##__VA_ARGS__); printf("%s", RESET); } while(0)
-        #define printWhite(var, ...)    do { printf("%s", WHITE); printf(var, ##__VA_ARGS__); printf("%s", RESET); } while(0)
+      #define printReset(var, ...)    do { printf("%s", RESET); printf(var, ##__VA_ARGS__); printf("%s", RESET); } while(0)
+      #define printBlack(var, ...)    do { printf("%s", BLACK); printf(var, ##__VA_ARGS__); printf("%s", RESET); } while(0)
+      #define printRed(var, ...)      do { printf("%s", RED); printf(var, ##__VA_ARGS__); printf("%s", RESET); } while(0)
+      #define printGreen(var, ...)    do { printf("%s", GREEN); printf(var, ##__VA_ARGS__); printf("%s", RESET); } while(0)
+      #define printYellow(var, ...)   do { printf("%s", YELLOW); printf(var, ##__VA_ARGS__); printf("%s", RESET); } while(0)
+      #define printBlue(var, ...)     do { printf("%s", BLUE); printf(var, ##__VA_ARGS__); printf("%s", RESET); } while(0)
+      #define printMagenta(var, ...)  do { printf("%s", MAGENTA); printf(var, ##__VA_ARGS__); printf("%s", RESET); } while(0)
+      #define printCyan(var, ...)     do { printf("%s", CYAN); printf(var, ##__VA_ARGS__); printf("%s", RESET); } while(0)
+      #define printWhite(var, ...)    do { printf("%s", WHITE); printf(var, ##__VA_ARGS__); printf("%s", RESET); } while(0)
 
-        #define printLBlack(var, ...)   do { printf("%s", LBLACK); printf(var, ##__VA_ARGS__); printf("%s", RESET); } while(0)
-        #define printLRed(var, ...)     do { printf("%s", LRED); printf(var, ##__VA_ARGS__); printf("%s", RESET); } while(0)
-        #define printLGreen(var, ...)   do { printf("%s", LGREEN); printf(var, ##__VA_ARGS__); printf("%s", RESET); } while(0)
-        #define printLYellow(var, ...)  do { printf("%s", LYELLOW); printf(var, ##__VA_ARGS__); printf("%s", RESET); } while(0)
-        #define printLBlue(var, ...)    do { printf("%s", LBLUE); printf(var, ##__VA_ARGS__); printf("%s", RESET); } while(0)
-        #define printLMagenta(var, ...) do { printf("%s", LMAGENTA); printf(var, ##__VA_ARGS__); printf("%s", RESET); } while(0)
-        #define printLCyan(var, ...)    do { printf("%s", LCYAN); printf(var, ##__VA_ARGS__); printf("%s", RESET); } while(0)
-        #define printLWhite(var, ...)   do { printf("%s", LWHITE); printf(var, ##__VA_ARGS__); printf("%s", RESET); } while(0)
+      #define printLBlack(var, ...)   do { printf("%s", LBLACK); printf(var, ##__VA_ARGS__); printf("%s", RESET); } while(0)
+      #define printLRed(var, ...)     do { printf("%s", LRED); printf(var, ##__VA_ARGS__); printf("%s", RESET); } while(0)
+      #define printLGreen(var, ...)   do { printf("%s", LGREEN); printf(var, ##__VA_ARGS__); printf("%s", RESET); } while(0)
+      #define printLYellow(var, ...)  do { printf("%s", LYELLOW); printf(var, ##__VA_ARGS__); printf("%s", RESET); } while(0)
+      #define printLBlue(var, ...)    do { printf("%s", LBLUE); printf(var, ##__VA_ARGS__); printf("%s", RESET); } while(0)
+      #define printLMagenta(var, ...) do { printf("%s", LMAGENTA); printf(var, ##__VA_ARGS__); printf("%s", RESET); } while(0)
+      #define printLCyan(var, ...)    do { printf("%s", LCYAN); printf(var, ##__VA_ARGS__); printf("%s", RESET); } while(0)
+      #define printLWhite(var, ...)   do { printf("%s", LWHITE); printf(var, ##__VA_ARGS__); printf("%s", RESET); } while(0)
 
+      #define printlnReset(var, ...)    do { printf("%s", RESET); printf(var, ##__VA_ARGS__); printf("%s\r\n", RESET); } while(0)
+      #define printlnBlack(var, ...)    do { printf("%s", BLACK); printf(var, ##__VA_ARGS__); printf("%s\r\n", RESET); } while(0)
+      #define printlnRed(var, ...)      do { printf("%s", RED); printf(var, ##__VA_ARGS__); printf("%s\r\n", RESET); } while(0)
+      #define printlnGreen(var, ...)    do { printf("%s", GREEN); printf(var, ##__VA_ARGS__); printf("%s\r\n", RESET); } while(0)
+      #define printlnYellow(var, ...)   do { printf("%s", YELLOW); printf(var, ##__VA_ARGS__); printf("%s\r\n", RESET); } while(0)
+      #define printlnBlue(var, ...)     do { printf("%s", BLUE); printf(var, ##__VA_ARGS__); printf("%s\r\n", RESET); } while(0)
+      #define printlnMagenta(var, ...)  do { printf("%s", MAGENTA); printf(var, ##__VA_ARGS__); printf("%s\r\n", RESET); } while(0)
+      #define printlnCyan(var, ...)     do { printf("%s", CYAN); printf(var, ##__VA_ARGS__); printf("%s\r\n", RESET); } while(0)
+      #define printlnWhite(var, ...)    do { printf("%s", WHITE); printf(var, ##__VA_ARGS__); printf("%s\r\n", RESET); } while(0)
 
-        #define printlnReset(var, ...)    do { printf("%s", RESET); printf(var, ##__VA_ARGS__); printf("%s\r\n", RESET); } while(0)
-        #define printlnBlack(var, ...)    do { printf("%s", BLACK); printf(var, ##__VA_ARGS__); printf("%s\r\n", RESET); } while(0)
-        #define printlnRed(var, ...)      do { printf("%s", RED); printf(var, ##__VA_ARGS__); printf("%s\r\n", RESET); } while(0)
-        #define printlnGreen(var, ...)    do { printf("%s", GREEN); printf(var, ##__VA_ARGS__); printf("%s\r\n", RESET); } while(0)
-        #define printlnYellow(var, ...)   do { printf("%s", YELLOW); printf(var, ##__VA_ARGS__); printf("%s\r\n", RESET); } while(0)
-        #define printlnBlue(var, ...)     do { printf("%s", BLUE); printf(var, ##__VA_ARGS__); printf("%s\r\n", RESET); } while(0)
-        #define printlnMagenta(var, ...)  do { printf("%s", MAGENTA); printf(var, ##__VA_ARGS__); printf("%s\r\n", RESET); } while(0)
-        #define printlnCyan(var, ...)     do { printf("%s", CYAN); printf(var, ##__VA_ARGS__); printf("%s\r\n", RESET); } while(0)
-        #define printlnWhite(var, ...)    do { printf("%s", WHITE); printf(var, ##__VA_ARGS__); printf("%s\r\n", RESET); } while(0)
-
-        #define printlnLBlack(var, ...)   do { printf("%s", LBLACK); printf(var, ##__VA_ARGS__); printf("%s\r\n", RESET); } while(0)
-        #define printlnLRed(var, ...)     do { printf("%s", LRED); printf(var, ##__VA_ARGS__); printf("%s\r\n", RESET); } while(0)
-        #define printlnLGreen(var, ...)   do { printf("%s", LGREEN); printf(var, ##__VA_ARGS__); printf("%s\r\n", RESET); } while(0)
-        #define printlnLYellow(var, ...)  do { printf("%s", LYELLOW); printf(var, ##__VA_ARGS__); printf("%s\r\n", RESET); } while(0)
-        #define printlnLBlue(var, ...)    do { printf("%s", LBLUE); printf(var, ##__VA_ARGS__); printf("%s\r\n", RESET); } while(0)
-        #define printlnLMagenta(var, ...) do { printf("%s", LMAGENTA); printf(var, ##__VA_ARGS__); printf("%s\r\n", RESET); } while(0)
-        #define printlnLCyan(var, ...)    do { printf("%s", LCYAN); printf(var, ##__VA_ARGS__); printf("%s\r\n", RESET); } while(0)
-        #define printlnLWhite(var, ...)   do { printf("%s", LWHITE); printf(var, ##__VA_ARGS__); printf("%s\r\n", RESET); } while(0)
+      #define printlnLBlack(var, ...)   do { printf("%s", LBLACK); printf(var, ##__VA_ARGS__); printf("%s\r\n", RESET); } while(0)
+      #define printlnLRed(var, ...)     do { printf("%s", LRED); printf(var, ##__VA_ARGS__); printf("%s\r\n", RESET); } while(0)
+      #define printlnLGreen(var, ...)   do { printf("%s", LGREEN); printf(var, ##__VA_ARGS__); printf("%s\r\n", RESET); } while(0)
+      #define printlnLYellow(var, ...)  do { printf("%s", LYELLOW); printf(var, ##__VA_ARGS__); printf("%s\r\n", RESET); } while(0)
+      #define printlnLBlue(var, ...)    do { printf("%s", LBLUE); printf(var, ##__VA_ARGS__); printf("%s\r\n", RESET); } while(0)
+      #define printlnLMagenta(var, ...) do { printf("%s", LMAGENTA); printf(var, ##__VA_ARGS__); printf("%s\r\n", RESET); } while(0)
+      #define printlnLCyan(var, ...)    do { printf("%s", LCYAN); printf(var, ##__VA_ARGS__); printf("%s\r\n", RESET); } while(0)
+      #define printlnLWhite(var, ...)   do { printf("%s", LWHITE); printf(var, ##__VA_ARGS__); printf("%s\r\n", RESET); } while(0)
     #else
       #pragma message("USE_PRINTS não definido: prints via USB desativados.")
       // ==============================================================================
-      // [ MODO VOO ] - O compilador substitui as funções por NADA (Zero overhead)
+      // O compilador substitui as funções por NADA (Zero overhead)
       // ==============================================================================
 
       #define printDebug(...)    do {} while(0)
@@ -384,38 +391,35 @@ extern "C" {
       #define printMagenta(...) do {} while(0)
       #define printWhite(...)   do {} while(0)
 
-      #define printLBlack(...)    do {} while(0)
-      #define printLRed(...)    do {} while(0)
-      #define printLGreen(...)  do {} while(0)
-      #define printLYellow(...) do {} while(0)
-      #define printLBlue(...)   do {} while(0)
-      #define printLMagenta(...)    do {} while(0)
-      #define printLCyan(...)    do {} while(0)
-      #define printLWhite(...)    do {} while(0)
+      #define printLBlack(...)     do {} while(0)
+      #define printLRed(...)       do {} while(0)
+      #define printLGreen(...)     do {} while(0)
+      #define printLYellow(...)    do {} while(0)
+      #define printLBlue(...)      do {} while(0)
+      #define printLMagenta(...)   do {} while(0)
+      #define printLCyan(...)      do {} while(0)
+      #define printLWhite(...)     do {} while(0)
 
-      // ==============================================================================
+      #define printlnReset(...)    do {} while(0)
+      #define printlnBlack(...)    do {} while(0)
+      #define printlnRed(...)      do {} while(0)
+      #define printlnGreen(...)    do {} while(0)
+      #define printlnYellow(...)   do {} while(0)
+      #define printlnBlue(...)     do {} while(0)
+      #define printlnCyan(...)     do {} while(0)
+      #define printlnMagenta(...)  do {} while(0)
+      #define printlnWhite(...)    do {} while(0)
 
-      #define printlnReset(...)  do {} while(0)
-      #define printlnBlack(...)  do {} while(0)
-      #define printlnRed(...)     do {} while(0)
-      #define printlnGreen(...)   do {} while(0)
-      #define printlnYellow(...)  do {} while(0)
-      #define printlnBlue(...)    do {} while(0)
-      #define printlnCyan(...)    do {} while(0)
-      #define printlnMagenta(...) do {} while(0)
-      #define printlnWhite(...)   do {} while(0)
-
-      #define printlnLBlack(...)    do {} while(0)
-      #define printlnLRed(...)    do {} while(0)
-      #define printlnLGreen(...)  do {} while(0)
-      #define printlnLYellow(...) do {} while(0)
-      #define printlnLBlue(...)   do {} while(0)
-      #define printlnLMagenta(...)    do {} while(0)
+      #define printlnLBlack(...)   do {} while(0)
+      #define printlnLRed(...)     do {} while(0)
+      #define printlnLGreen(...)   do {} while(0)
+      #define printlnLYellow(...)  do {} while(0)
+      #define printlnLBlue(...)    do {} while(0)
+      #define printlnLMagenta(...) do {} while(0)
       #define printlnLCyan(...)    do {} while(0)
-      #define printlnLWhite(...)    do {} while(0)
-
+      #define printlnLWhite(...)   do {} while(0)
     #endif
-  #endif /* STM32/ESP32 */
+  #endif /* STM32 */
 
 /////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -423,134 +427,88 @@ extern "C" {
   #pragma message("Aviso: Macros de cor printf/printfln desativadas (PRINT_COLORS não definido).")
   
   #if defined(ARDUINO)
-
     #define printDebug(...)    do { Serial.print(__VA_ARGS__); } while(0)
     #define printlnDebug(...)  do { Serial.println(__VA_ARGS__); } while(0)
     #define printfDebug(...)   do { Serial.printf(__VA_ARGS__); } while(0)
+    #define printflnDebug(...) do { Serial.printf(__VA_ARGS__); Serial.println(); } while(0)
 
-    // uso exclusivo aqui
-    #define printflnDebug(...)   do { Serial.printf(__VA_ARGS__); Serial.println(); } while(0)
+    #define printReset(...)    printDebug(__VA_ARGS__)
+    #define printBlack(...)    printDebug(__VA_ARGS__)
+    #define printRed(...)      printDebug(__VA_ARGS__)
+    #define printGreen(...)    printDebug(__VA_ARGS__)
+    #define printYellow(...)   printDebug(__VA_ARGS__)
+    #define printBlue(...)     printDebug(__VA_ARGS__)
+    #define printCyan(...)     printDebug(__VA_ARGS__)
+    #define printMagenta(...)  printDebug(__VA_ARGS__)
+    #define printWhite(...)    printDebug(__VA_ARGS__)
 
-    #define printReset(...)   printDebug(...)
-    #define printBlack(...)   printDebug(...)
-    #define printRed(...)     printDebug(...)
-    #define printGreen(...)   printDebug(...)
-    #define printYellow(...)  printDebug(...)
-    #define printBlue(...)    printDebug(...)
-    #define printCyan(...)    printDebug(...)
-    #define printMagenta(...) printDebug(...)
-    #define printWhite(...)   printDebug(...)
+    #define printLBlack(...)   printDebug(__VA_ARGS__)
+    #define printLRed(...)     printDebug(__VA_ARGS__)
+    #define printLGreen(...)   printDebug(__VA_ARGS__)
+    #define printLYellow(...)  printDebug(__VA_ARGS__)
+    #define printLBlue(...)    printDebug(__VA_ARGS__)
+    #define printLMagenta(...) printDebug(__VA_ARGS__)
+    #define printLCyan(...)    printDebug(__VA_ARGS__)
+    #define printLWhite(...)   printDebug(__VA_ARGS__)
 
-    #define printLBlack(...)    printDebug(...)
-    #define printLRed(...)    printDebug(...)
-    #define printLGreen(...)  printDebug(...)
-    #define printLYellow(...) printDebug(...)
-    #define printLBlue(...)   printDebug(...)
-    #define printLMagenta(...) printDebug(...)
-    #define printLCyan(...)   printDebug(...)
-    #define printLWhite(...)   printDebug(...)
+    #define printlnReset(...)    printlnDebug(__VA_ARGS__)
+    #define printlnBlack(...)    printlnDebug(__VA_ARGS__)
+    #define printlnRed(...)      printlnDebug(__VA_ARGS__)
+    #define printlnGreen(...)    printlnDebug(__VA_ARGS__)
+    #define printlnYellow(...)   printlnDebug(__VA_ARGS__)
+    #define printlnBlue(...)     printlnDebug(__VA_ARGS__)
+    #define printlnCyan(...)     printlnDebug(__VA_ARGS__)
+    #define printlnMagenta(...)  printlnDebug(__VA_ARGS__)
+    #define printlnWhite(...)    printlnDebug(__VA_ARGS__)
 
-    // ==============================================================================
-    // MACROS PARA PRINTLN (Texto Simples com Quebra de Linha)
-    // ==============================================================================
+    #define printlnLBlack(...)   printlnDebug(__VA_ARGS__)
+    #define printlnLRed(...)     printlnDebug(__VA_ARGS__)
+    #define printlnLGreen(...)   printlnDebug(__VA_ARGS__)
+    #define printlnLYellow(...)  printlnDebug(__VA_ARGS__)
+    #define printlnLBlue(...)    printlnDebug(__VA_ARGS__)
+    #define printlnLMagenta(...) printlnDebug(__VA_ARGS__)
+    #define printlnLCyan(...)    printlnDebug(__VA_ARGS__)
+    #define printlnLWhite(...)   printlnDebug(__VA_ARGS__)
 
-    #define printlnReset(...)   printlnDebug(...)
-    #define printlnBlack(...)   printlnDebug(...)
-    #define printlnRed(...)     printlnDebug(...)
-    #define printlnGreen(...)   printlnDebug(...)
-    #define printlnYellow(...)  printlnDebug(...)
-    #define printlnBlue(...)    printlnDebug(...)
-    #define printlnCyan(...)    printlnDebug(...)
-    #define printlnMagenta(...) printlnDebug(...)
-    #define printlnWhite(...)   printlnDebug(...)
+    #define printfReset(fmt, ...)    printfDebug(fmt, ##__VA_ARGS__)
+    #define printfBlack(fmt, ...)    printfDebug(fmt, ##__VA_ARGS__)
+    #define printfRed(fmt, ...)      printfDebug(fmt, ##__VA_ARGS__)
+    #define printfGreen(fmt, ...)    printfDebug(fmt, ##__VA_ARGS__)
+    #define printfYellow(fmt, ...)   printfDebug(fmt, ##__VA_ARGS__)
+    #define printfBlue(fmt, ...)     printfDebug(fmt, ##__VA_ARGS__)
+    #define printfCyan(fmt, ...)     printfDebug(fmt, ##__VA_ARGS__)
+    #define printfMagenta(fmt, ...)  printfDebug(fmt, ##__VA_ARGS__)
+    #define printfWhite(fmt, ...)    printfDebug(fmt, ##__VA_ARGS__)
 
-    #define printlnLBlack(...)   printlnDebug(...)
-    #define printlnLRed(...)    printlnDebug(...)
-    #define printlnLGreen(...)  printlnDebug(...)
-    #define printlnLYellow(...) printlnDebug(...)
-    #define printlnLBlue(...)   printlnDebug(...)
-    #define printlnLCyan(...)   printlnDebug(...)
-    #define printlnLMagenta(...) printlnDebug(...)
-    #define printlnLWhite(...)   printlnDebug(...)
+    #define printfLBlack(fmt, ...)   printfDebug(fmt, ##__VA_ARGS__)
+    #define printfLRed(fmt, ...)     printfDebug(fmt, ##__VA_ARGS__)
+    #define printfLGreen(fmt, ...)   printfDebug(fmt, ##__VA_ARGS__)
+    #define printfLYellow(fmt, ...)  printfDebug(fmt, ##__VA_ARGS__)
+    #define printfLBlue(fmt, ...)    printfDebug(fmt, ##__VA_ARGS__)
+    #define printfLMagenta(fmt, ...) printfDebug(fmt, ##__VA_ARGS__)
+    #define printfLCyan(fmt, ...)    printfDebug(fmt, ##__VA_ARGS__)
+    #define printfLWhite(fmt, ...)   printfDebug(fmt, ##__VA_ARGS__)
 
-    // ==============================================================================
-    //#if defined(ESP32) || defined(ESP8266) || defined(ARDUINO_ARCH_STM32)
-  
-    #define printfRed(fmt, ...)     printfDebug(fmt, ...)
-    #define printfGreen(fmt, ...)   printfDebug(fmt, ...)
-    #define printfYellow(fmt, ...)  printfDebug(fmt, ...)
-    #define printfBlue(fmt, ...)    printfDebug(fmt, ...)
+    #define printflnReset(fmt, ...)    printflnDebug(fmt, ##__VA_ARGS__)
+    #define printflnBlack(fmt, ...)    printflnDebug(fmt, ##__VA_ARGS__)
+    #define printflnRed(fmt, ...)      printflnDebug(fmt, ##__VA_ARGS__)
+    #define printflnGreen(fmt, ...)    printflnDebug(fmt, ##__VA_ARGS__)
+    #define printflnYellow(fmt, ...)   printflnDebug(fmt, ##__VA_ARGS__)
+    #define printflnBlue(fmt, ...)     printflnDebug(fmt, ##__VA_ARGS__)
+    #define printflnCyan(fmt, ...)     printflnDebug(fmt, ##__VA_ARGS__)
+    #define printflnMagenta(fmt, ...)  printflnDebug(fmt, ##__VA_ARGS__)
+    #define printflnWhite(fmt, ...)    printflnDebug(fmt, ##__VA_ARGS__)
 
-    #define printfLRed(fmt, ...)    printfDebug(fmt, ...)
-    #define printfLGreen(fmt, ...)  printfDebug(fmt, ...)
-    #define printfLYellow(fmt, ...) printfDebug(fmt, ...)
-    #define printfLBlue(fmt, ...)   printfDebug(fmt, ...)
-    #define printfLCyan(fmt, ...)   printfDebug(fmt, ...)
-    #define printfWhite(fmt, ...)   printfDebug(fmt, ...)
-
-    // ==============================================================================
-    #define printflnRed(fmt, ...)     printflnDebug(fmt, ...)
-    #define printflnGreen(fmt, ...)   printflnDebug(fmt, ...)
-    #define printflnYellow(fmt, ...)  printflnDebug(fmt, ...)
-    #define printflnBlue(fmt, ...)    printflnDebug(fmt, ...)
-
-    #define printflnLRed(fmt, ...)    printflnDebug(fmt, ...)
-    #define printflnLGreen(fmt, ...)  printflnDebug(fmt, ...)
-    #define printflnLYellow(fmt, ...) printflnDebug(fmt, ...)
-    #define printflnLBlue(fmt, ...)   printflnDebug(fmt, ...)
-    #define printflnLCyan(fmt, ...)   printflnDebug(fmt, ...)
-    #define printflnWhite(fmt, ...)   printflnDebug(fmt, ...)
-  
-  #elif defined(USE_HALDRIVER) || defined(STM32F4xx) || defined(STM32F401xC) || defined(STM32F411xE) || defined(STM32F401xE)
-
-    #define printDebug(var, ...)    do { printf(var, ##__VA_ARGS__); } while(0)
-    #define printlnDebug(var, ...)  do { printf(var "\r\n", ##__VA_ARGS__); } while(0)
-
-    #define printReset(var, ...)   printDebug(var, ...)
-    #define printBlack(var, ...)   printDebug(var, ...)
-    #define printRed(var, ...)     printDebug(var, ...)
-    #define printGreen(var, ...)   printDebug(var, ...)
-    #define printYellow(var, ...)  printDebug(var, ...)
-    #define printBlue(var, ...)    printDebug(var, ...)
-    #define printCyan(var, ...)    printDebug(var, ...)
-    #define printMagenta(var, ...) printDebug(var, ...)
-    #define printWhite(var, ...)   printDebug(var, ...)
-
-    #define printLBlack(var, ...)    printDebug(var, ...)
-    #define printLRed(var, ...)    printDebug(var, ...)
-    #define printLGreen(var, ...)  printDebug(var, ...)
-    #define printLYellow(var, ...) printDebug(var, ...)
-    #define printLBlue(var, ...)   printDebug(var, ...)
-    #define printLMagenta(var, ...)    printDebug(var, ...)
-    #define printLCyan(var, ...)    printDebug(var, ...)
-    #define printLWhite(var, ...)    printDebug(var, ...)
-
-    // ==============================================================================
-
-    #define printlnReset(var, ...)  printDebug(var, ...)
-    #define printlnBlack(var, ...)  printDebug(var, ...)
-    #define printlnRed(var, ...)     printDebug(var, ...)
-    #define printlnGreen(var, ...)   printDebug(var, ...)
-    #define printlnYellow(var, ...)  printDebug(var, ...)
-    #define printlnBlue(var, ...)    printDebug(var, ...)
-    #define printlnCyan(var, ...)    printDebug(var, ...)
-    #define printlnMagenta(var, ...) printDebug(var, ...)
-    #define printlnWhite(var, ...)   printDebug(var, ...)
-
-    #define printlnLBlack(var, ...)    printDebug(var, ...)
-    #define printlnLRed(var, ...)    printDebug(var, ...)
-    #define printlnLGreen(var, ...)  printDebug(var, ...)
-    #define printlnLYellow(var, ...) printDebug(var, ...)
-    #define printlnLBlue(var, ...)   printDebug(var, ...)
-    #define printlnLMagenta(var, ...)    printDebug(var, ...)
-    #define printlnLCyan(var, ...)    printDebug(var, ...)
-    #define printlnLWhite(var, ...)    printDebug(var, ...)
-
-  #else
-    #pragma message("Aviso: Arquitetura não suportada para prints. Use ARDUINO ou STM32/ESP32.")
+    #define printflnLBlack(fmt, ...)   printflnDebug(fmt, ##__VA_ARGS__)
+    #define printflnLRed(fmt, ...)     printflnDebug(fmt, ##__VA_ARGS__)
+    #define printflnLGreen(fmt, ...)   printflnDebug(fmt, ##__VA_ARGS__)
+    #define printflnLYellow(fmt, ...)  printflnDebug(fmt, ##__VA_ARGS__)
+    #define printflnLBlue(fmt, ...)    printflnDebug(fmt, ##__VA_ARGS__)
+    #define printflnLMagenta(fmt, ...) printflnDebug(fmt, ##__VA_ARGS__)
+    #define printflnLCyan(fmt, ...)    printflnDebug(fmt, ##__VA_ARGS__)
+    #define printflnLWhite(fmt, ...)   printflnDebug(fmt, ##__VA_ARGS__)
   #endif
 #endif
-
 
 #ifdef __cplusplus
 }

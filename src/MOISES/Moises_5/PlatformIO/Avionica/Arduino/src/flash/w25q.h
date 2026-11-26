@@ -1,7 +1,7 @@
 /*
   ******************************************************************************
   * @file    w25q.h
-  * @brief   Driver de armazenamento SPI para a memória Flash W25Q (Caixa Preta)
+  * @brief   Driver de armazenamento SPI para a memória Flash W25Q
   ******************************************************************************
 */
 
@@ -25,14 +25,14 @@ constexpr u32 W25Q_BLOCK_SIZE       = 65536;
 constexpr u32 W25Q_DEFAULT_LIMIT    = 0x800000; // 8 MB (W25Q)
 
 constexpr u32 HEADER_MAGIC_FLT1     = 0x31544C46; // "FLT1"
-constexpr u16 HEADER_FORMAT_VERSION = 3;
+constexpr u16 HEADER_FORMAT_VERSION = 1; // Chamando de 1 pq sim, fds
 constexpr u32 MAGIC_NUMBER_SIRIUS   = 0xAA55AA55; // Indica voo em andamento (recuperação pós-watchdog)
 
-// Flags compactadas no nibble superior de LogData_t::stateAndFlags
-constexpr u8 LOG_FLAG_PRETRIGGER    = 0x10; // 0b10000 bit 5 acionado quando timestamp < 0 (pré-trigger)
-constexpr u8 LOG_FLAG_LAUNCH        = 0x20; // 0b100000 bit 6 acionado no registro do lançamento (timestamp == 0)
-constexpr u8 LOG_FLAG_RESUMED       = 0x40; // 0b1000000 bit 7 acionado quando o log é retomado após reinicio em voo (watchdog)
-constexpr u8 LOG_FLAG_IMU_VALID     = 0x80; // 0b10000000 bit 8 acionado quando o registro contém dados válidos do MPU6050 (acel + gyro)
+// Flags compactadas no nibble superior de LogData_t::stateAndFlags (bits 4..7)
+constexpr u8 LOG_FLAG_PRETRIGGER    = 0x10; // 0b00010000 (bit 4) - amostra de pré-trigger (timestamp < 0)
+constexpr u8 LOG_FLAG_LAUNCH        = 0x20; // 0b00100000 (bit 5) - registro exato do lançamento (timestamp == 0)
+constexpr u8 LOG_FLAG_RESUMED       = 0x40; // 0b01000000 (bit 6) - log retomado após reinício em voo (watchdog)
+constexpr u8 LOG_FLAG_IMU_VALID     = 0x80; // 0b10000000 (bit 7) - registro contém dados válidos do MPU6050 (accel + gyro)
 
 // ==============================================================================
 // ESTRUTURAS DE DADOS (ALINHADAS EM 32 BYTES)
@@ -64,8 +64,10 @@ typedef struct __attribute__((packed)) {
     u8    crc8;             // 1 B: Checksum dos 31 bytes anteriores
 } LogData_t;
 
-static_assert(sizeof(FlightHeader_t) == 32, "FlightHeader_t deve ter exatos 32 bytes");
-static_assert(sizeof(LogData_t) == 32, "LogData_t deve ter exatos 32 bytes");
+#ifdef __cplusplus
+    static_assert(sizeof(FlightHeader_t) == 32, "FlightHeader_t deve ter exatos 32 bytes");
+    static_assert(sizeof(LogData_t) == 32, "LogData_t deve ter exatos 32 bytes");
+#endif
 
 constexpr u32 LOGS_PER_PAGE = W25Q_PAGE_SIZE / sizeof(LogData_t); // 8 registros por página
 

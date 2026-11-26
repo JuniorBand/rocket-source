@@ -188,8 +188,8 @@ static inline i32 transf_32_bigend(const u8 *ptr, u32 n) {
 
 
 #if !defined(MIN) || !defined(MAX)
-	#define MIN(a, b) (a < b) ? a : b
-	#define MAX(a, b) (a < b) ? b : a
+    #define MIN(a, b) (((a) < (b)) ? (a) : (b))
+    #define MAX(a, b) (((a) < (b)) ? (b) : (a))
 #endif
 
 extern const char* ESTADO[];

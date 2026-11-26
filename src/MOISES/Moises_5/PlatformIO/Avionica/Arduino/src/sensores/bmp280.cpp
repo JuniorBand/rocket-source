@@ -1,3 +1,10 @@
+/*
+  ******************************************************************************
+  * @file    bmp280.cpp
+  * @brief   Implementacao do Driver para o sensor BMP280
+  ******************************************************************************
+*/
+
 #include <sensores/bmp280.h>
 #include <SPI.h>
 #include <Adafruit_BMP280.h>
@@ -21,6 +28,7 @@ static inline bool printsBloqueadosPorVoo(void) {
 }
 
 bool bmp280Init(BMP280_t *dev) {
+    pinMode(PIN_BMP_MISO, INPUT_PULLUP);
     pinMode(PIN_BMP_CS, OUTPUT);
     digitalWrite(PIN_BMP_CS, HIGH);
 
